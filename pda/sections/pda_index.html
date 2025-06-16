@@ -165,19 +165,37 @@
     <script>
     async function loadTodaySummary() {
       const today = new Date().toISOString().slice(0, 10);
+      console.log('오늘 날짜:', today);
+      
       // 입고 예정: receiving_plan에서 receive_date가 오늘인 container_no 개수
       const { data: plans } = await supabase
         .from('receiving_plan')
         .select('container_no')
         .eq('receive_date', today);
+      console.log('입고 예정 데이터:', plans);
       const inboundPlanned = (plans || []).length;
-      // 입고 완료: receiving_log에서 received_at이 오늘인 row 개수
-      const { data: logs } = await supabase
+      
+      // 입고 완료: receiving_log에서 오늘 입고된 label_id 목록
+      const { data: logs, error: logError } = await supabase
         .from('receiving_log')
-        .select('received_at')
+        .select('label_id')
         .gte('received_at', today + 'T00:00:00')
         .lte('received_at', today + 'T23:59:59');
-      const inboundDone = (logs || []).length;
+      const labelIds = (logs || []).map(log => log.label_id);
+      let containerNos = [];
+      if (labelIds.length > 0) {
+        // 해당 label_id들의 container_no를 receiving_items에서 조회
+        const { data: items, error: itemsError } = await supabase
+          .from('receiving_items')
+          .select('container_no, label_id')
+          .in('label_id', labelIds);
+        containerNos = (items || []).map(item => item.container_no);
+      }
+      // container_no 기준으로 중복 제거
+      const uniqueContainers = new Set(containerNos);
+      const inboundDone = uniqueContainers.size;
+      console.log('입고 완료 수:', inboundDone);
+
       // 출고 예정/완료/남은수 (컨테이너 개수 기준)
       const { data: ships } = await supabase
         .from('shipping_instruction')
@@ -186,6 +204,7 @@
       const outboundPlanned = (ships || []).length;
       const outboundDone = (ships || []).filter(s => s.status === 'shipped').length;
       const outboundLeft = (ships || []).filter(s => s.status === 'pending').length;
+      
       // 남은수
       document.getElementById('inbound-planned').textContent = inboundPlanned;
       document.getElementById('inbound-done').textContent = inboundDone;

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History View</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module" src="./js/history.js"></script>
+  <script type="module" src="./config/config.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-xl p-6">
+    <h1 class="text-2xl font-bold mb-4">📊 Transaction History</h1>
+
+    <div class="flex flex-col md:flex-row md:items-end md:space-x-4 mb-4">
+      <div class="flex-1">
+        <label class="block font-medium mb-1">Date</label>
+        <input id="dateInput" type="date" class="w-full border rounded px-3 py-2" />
+      </div>
+      <div class="flex-1">
+        <label class="block font-medium mb-1">Type</label>
+        <select id="typeSelect" class="w-full border rounded px-3 py-2">
+          <option value="all">All</option>
+          <option value="receiving">Receiving</option>
+          <option value="shipping">Shipping</option>
+          <option value="move">Location Move</option>
+        </select>
+      </div>
+      <div class="flex-1">
+        <label class="block font-medium mb-1">Part No.</label>
+        <input id="partInput" type="text" class="w-full border rounded px-3 py-2" placeholder="e.g. 4HH1" />
+      </div>
+      <div>
+        <button id="filterBtn" class="mt-4 md:mt-0 bg-blue-600 text-white px-5 py-2 rounded">Filter</button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border">
+        <thead class="bg-gray-200">
+          <tr>
+            <th class="p-2">Date</th>
+            <th class="p-2">Type</th>
+            <th class="p-2">Part No</th>
+            <th class="p-2">Qty</th>
+            <th class="p-2">Location</th>
+            <th class="p-2">Container / Note</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Force Receive Date Modal -->
+  <div id="forceReceiveModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+      <div class="mt-3">
+        <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">강제 입고 날짜 선택</h3>
+        <div class="mt-2 px-7 py-3">
+          <input type="date" id="forceReceiveDate" class="w-full border rounded px-3 py-2">
+        </div>
+        <div class="flex justify-end mt-4">
+          <button id="confirmForceReceive" class="bg-green-600 text-white px-4 py-2 rounded mr-2">확인</button>
+          <button id="cancelForceReceive" class="bg-gray-500 text-white px-4 py-2 rounded">취소</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Leehwa WP1 WMS System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 min-h-screen flex items-center justify-center">
+  <div class="max-w-lg w-full space-y-10 p-12 bg-white bg-opacity-90 rounded-3xl shadow-2xl border border-gray-200">
+    <h2 class="text-center text-4xl font-extrabold text-gray-900 drop-shadow-lg">Leehwa WP1 WMS System</h2>
+    <p class="mt-2 text-center text-lg text-gray-700">Log in to start</p>
+
+    <form id="loginForm" class="space-y-6">
+      <div>
+        <label class="block text-lg font-medium text-gray-700 mb-1">ID</label>
+        <input id="username" type="text" disabled
+          class="w-full px-5 py-3 border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
+          placeholder="선택한 Role 과 동일하게 자동 세팅됩니다." />
+      </div>
+
+      <div>
+        <label class="block text-lg font-medium text-gray-700 mb-1">Password</label>
+        <input id="password" type="password" disabled
+          class="w-full px-5 py-3 border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
+          placeholder="사용하지 않습니다." />
+      </div>
+
+      <div>
+        <label for="roleSelect" class="block text-lg font-medium text-gray-700 mb-1">Role 선택</label>
+        <select id="roleSelect"
+          class="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          <option value="admin">Admin</option>
+          <option value="pda">PDA</option>
+        </select>
+      </div>
+
+      <button type="submit"
+        class="w-full py-4 text-lg font-bold rounded-xl text-white bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 shadow-lg hover:from-indigo-600 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-400 transition">
+        Login
+      </button>
+
+      <div id="errorMessage" class="hidden text-red-500 text-center mt-2"></div>
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const loginForm   = document.getElementById('loginForm');
+      const roleSelect  = document.getElementById('roleSelect');
+      const usernameIn  = document.getElementById('username');
+
+      // 페이지 로드 시, 선택된 role을 username에 반영
+      usernameIn.value = roleSelect.value;
+      roleSelect.addEventListener('change', () => {
+        usernameIn.value = roleSelect.value;
+      });
+
+      loginForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const role = roleSelect.value;
+
+        // ID/PW 무시하고, username과 role을 동일하게 세팅
+        const userObj = {
+          id:       role,
+          username: role,
+          role:     role
+        };
+        localStorage.setItem('user', JSON.stringify(userObj));
+
+        // role에 따라 화면 이동
+        if (role === 'admin') {
+          window.location.href = '/admin/index.html';
+        } else {
+          window.location.href = '/pda/sections/pda_index.html';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

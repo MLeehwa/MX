@@ -1,0 +1,65 @@
+<div class="w-full mx-auto bg-white shadow-xl rounded-xl p-2 sm:p-4 md:p-6">
+  <div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-bold" data-i18n="title_location_view">Location View</h1>
+    <div class="flex gap-2">
+      <button class="lang-btn bg-blue-600 text-white px-3 py-1 rounded text-sm" data-lang="ko">한국어</button>
+      <button class="lang-btn bg-gray-300 text-gray-800 px-3 py-1 rounded text-sm" data-lang="en">English</button>
+    </div>
+  </div>
+  <!-- 필터 UI 추가 -->
+  <div class="flex flex-wrap gap-2 mb-4 items-end">
+    <div>
+      <label class="block text-xs font-semibold mb-1" data-i18n="label_product_name">제품명</label>
+      <input id="filterProduct" type="text" class="border rounded px-2 py-1 text-sm" data-i18n-placeholder="ph_search_product" placeholder="제품명 검색..." />
+    </div>
+    <div>
+      <label class="block text-xs font-semibold mb-1" data-i18n="label_trailer_container">트레일러/컨테이너 번호</label>
+      <input id="filterTrailer" type="text" class="border rounded px-2 py-1 text-sm" data-i18n-placeholder="ph_trailer_container" placeholder="트레일러/컨테이너 번호..." />
+    </div>
+    <div>
+      <label class="block text-xs font-semibold mb-1" data-i18n="label_receiving_date">입고 날짜</label>
+      <input id="filterDate" type="date" class="border rounded px-2 py-1 text-sm" />
+    </div>
+    <button id="filterBtn" class="bg-blue-500 text-white rounded px-4 py-1 text-sm font-semibold" data-i18n="btn_search">검색</button>
+    <button id="resetBtn" class="bg-gray-300 text-gray-700 rounded px-4 py-1 text-sm font-semibold" data-i18n="btn_reset">초기화</button>
+  </div>
+  <div class="flex gap-4">
+    <div class="flex-1 min-w-0">
+      <div class="w-full overflow-auto">
+        <svg id="locationSVG"
+             viewBox="0 0 835 667"
+             class="w-full h-[80vh] max-w-full"
+             style="background:#f8fafc; border:1.5px solid #333; box-shadow:0 2px 12px #0002;">
+          <!-- === 공장 도면(회색 외곽) ===
+            - 각 구역은 <rect>로 구성
+            - x, y, width, height, fill, stroke 등 숫자/색상만 바꾸면 바로 반영
+            - 새로운 구역/텍스트 추가도 <rect>, <text> 복사해서 원하는 위치/크기로 추가
+          -->
+          <!-- 왼쪽 세로 구역 -->
+          <rect x="1" y="1" width="175" height="575" fill="#d3d3d3" stroke="#000" />
+          <!-- 하단 가로 구역 -->
+          <rect x="177.5" y="151" width="480" height="425" fill="#d3d3d3" stroke="#000" />
+
+          <!-- === LOADING DOCK === -->
+          <rect x="250" y="120" width="300" height="25" fill="#176687" stroke="#000" />
+          <text x="400" y="135" font-size="15" fill="#fff" text-anchor="middle" alignment-baseline="middle" data-i18n="text_loading_dock">LOADING DOCK</text>
+
+          <!-- === 여기에 원하는 도형/텍스트 추가 가능 === -->
+          <!-- 예시: 새로운 구역 추가 -->
+          <!-- <rect x="700" y="300" width="100" height="50" fill="#ffe082" stroke="#000" /> -->
+          <!-- <text x="750" y="330" font-size="16" fill="#333" text-anchor="middle">NEW ZONE</text> -->
+
+          <!-- Location rects는 JS에서 동적으로 추가 -->
+        </svg>
+      </div>
+    </div>
+    <div id="locationSidePanel" class="w-72 md:w-96 lg:w-[420px] bg-white p-4 rounded shadow-lg h-[80vh] overflow-y-auto flex-shrink-0">
+      <div class="mb-4">
+        <h2 id="sidePanelLocationTitle" class="text-xl font-bold" data-i18n="title_location_info">Location Info</h2>
+      </div>
+      <div id="sidePanelLocationBody" class="mb-4 text-gray-500" data-i18n="text_select_location">좌측에서 위치를 선택하세요.</div>
+      <div id="shippingOrderArea"></div>
+    </div>
+  </div>
+</div>
+<script type="module" src="../js/location_view.js"></script> 

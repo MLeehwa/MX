@@ -1,0 +1,19 @@
+# netlify.toml
+[build]
+  publish = "build"   # 여러분의 정적 빌드 폴더명으로 바꿔주세요
+
+# 모든 정적 파일에 CORS 허용
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*" 
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+# Netlify Functions에도 CORS 허용
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"

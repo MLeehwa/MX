@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location View</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div class="container mx-auto p-4">
+    <div class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-bold">Location View</h1>
+      <div class="flex gap-2">
+        <input type="text" id="filterProduct" placeholder="제품명" class="border rounded px-2 py-1">
+        <input type="text" id="filterTrailer" placeholder="트레일러" class="border rounded px-2 py-1">
+        <input type="date" id="filterDate" class="border rounded px-2 py-1">
+        <button id="filterBtn" class="bg-blue-500 text-white px-4 py-1 rounded">필터</button>
+        <button id="resetBtn" class="bg-gray-500 text-white px-4 py-1 rounded">초기화</button>
+      </div>
+    </div>
+    <div class="flex gap-4">
+      <div class="flex-1">
+        <svg id="locationSVG" viewBox="0 0 835 667" style="width:100%; height:80vh; max-width:100%; background:#f8fafc; border:1.5px solid #333; box-shadow:0 2px 12px #0002;"></svg>
+      </div>
+      <div id="locationSidePanel" class="w-80 bg-white p-4 rounded shadow-lg h-[80vh] overflow-y-auto flex-shrink-0">
+        <div class="mb-4">
+          <h2 id="sidePanelLocationTitle" class="text-xl font-bold">Location Info</h2>
+        </div>
+        <div id="sidePanelLocationBody" class="mb-4 text-gray-500">좌측에서 위치를 선택하세요.</div>
+        <div id="shippingOrderArea"></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/location_view.js"></script>
+</body>
+</html> 

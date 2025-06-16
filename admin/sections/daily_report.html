@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>일일 입출고 현황 리포트</title>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="../config/config.js"></script>
+  <script>
+    // config.js에서 SUPABASE_URL, SUPABASE_KEY를 받아서 supabase 초기화
+    const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
+  </script>
+  <style>
+    body { font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif; }
+    .container {
+      margin: 40px auto;
+      max-width: 2400px;
+      width: 100%;
+    }
+    label, input, button { font-size: 1.5em; }
+    button { background: #2563eb; color: #fff; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .print-btn { background: #059669; margin-left: 10px; }
+    .print-btn:hover { background: #047857; }
+    .print-table-wrapper {
+      margin-top: 30px;
+      width: 100%;
+      max-width: 100%;
+    }
+    th { background: #2563eb !important; color: #fff !important; }
+    /* 확인, 시간, 메모 컬럼 2배 넓히기 */
+    td:nth-child(8), th:nth-child(8),
+    td:nth-child(9), th:nth-child(9),
+    td:nth-child(10), th:nth-child(10) {
+      min-width: 200px;
+      width: 200px;
+    }
+    /* 컨테이너 번호 컬럼 더 넓게 */
+    td:nth-child(4), th:nth-child(4) {
+      min-width: 200px;
+      width: 200px;
+    }
+    .print-table-wrapper table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    .print-table-wrapper th, .print-table-wrapper td {
+      white-space: normal;
+      word-break: break-all;
+      height: 48px;
+      line-height: 1.4;
+      vertical-align: middle;
+    }
+    @media print {
+      .container, .print-table-wrapper, .print-table-wrapper table {
+        display: block !important;
+      }
+      nav, aside, .sidebar, header, footer, .non-print, .print-btn, #excel-download-btn, label[for="report-date"], #report-date, h2 {
+        display: none !important;
+      }
+      @page {
+        size: A4 landscape;
+        margin: 0;
+      }
+      body { margin: 0; padding: 0; }
+      .container, .print-table-wrapper {
+        max-width: 100vw !important;
+        width: 100vw !important;
+      }
+      .print-table-wrapper { width: 100vw; max-width: 100vw; page-break-after: always; }
+      table { width: 100% !important; font-size: 14pt; border-collapse: collapse !important; }
+      th, td { border: 1px solid #333 !important; padding: 8px !important; }
+      th { background: #2563eb !important; color: #fff !important; }
+      input, button, label, nav, aside, .sidebar, header, footer, .non-print, [class*="sidebar"], [class*="side-bar"], h2 {
+        display: none !important;
+      }
+      .print-table-wrapper table {
+        width: 100% !important;
+        table-layout: auto !important;
+        overflow: visible !important;
+      }
+      .print-table-wrapper th, .print-table-wrapper td {
+        white-space: normal !important;
+        word-break: break-all !important;
+        overflow: visible !important;
+        height: 48px !important;
+        line-height: 1.4 !important;
+        vertical-align: middle !important;
+      }
+      .print-table-wrapper {
+        overflow: visible !important;
+      }
+      td:nth-child(4), th:nth-child(4) {
+        min-width: 120px !important;
+        width: 150px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>일일 입출고 현황 리포트</h2>
+    <label for="report-date">날짜 선택:</label>
+    <input type="date" id="report-date" />
+    <button id="excel-download-btn">엑셀 다운로드</button>
+    <button class="print-btn">프린트</button>
+    <div class="print-table-wrapper" id="print-table-wrapper"></div>
+  </div>
+</body>
+</html> 

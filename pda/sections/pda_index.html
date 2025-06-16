@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDA 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8"></script>
+    <script src="../config/config.js"></script>
+    <style>
+        .square-button {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 1rem;
+        }
+        .icon-container {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        html, body { background: #1a1a1a; }
+        .lang-btn.active { box-shadow: 0 0 0 3px #2563eb55; font-weight: bold; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start py-8 px-2 bg-[#1a1a1a]">
+    <!-- 언어 선택 -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-8">
+        <h1 class="text-4xl font-extrabold text-white" data-i18n="title">PDA 시스템</h1>
+        <div class="flex items-center space-x-2">
+            <button class="lang-btn px-4 py-2 mx-1 rounded bg-blue-500 text-white text-xl" data-lang="ko">한국어</button>
+            <button class="lang-btn px-4 py-2 mx-1 rounded bg-green-500 text-white text-xl" data-lang="en">English</button>
+            <button class="lang-btn px-4 py-2 mx-1 rounded bg-yellow-500 text-white text-xl" data-lang="es">Español</button>
+            <button id="logoutBtn" data-i18n="logout" class="ml-4 px-4 py-2 rounded bg-red-600 text-white text-xl hover:bg-red-700">로그아웃</button>
+        </div>
+        </div>
+
+    <!-- 금일 입출고 예정표 카드 -->
+    <div id="today-summary" class="w-full max-w-4xl mb-8 grid grid-cols-2 gap-8">
+      <div class="bg-white rounded-xl p-8 flex flex-col items-center min-w-[320px]">
+        <div class="text-2xl font-extrabold mb-4 text-black" id="inbound-title">입고</div>
+        <div class="flex space-x-12">
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="planned-label">예정</div>
+            <div id="inbound-planned" class="text-3xl font-extrabold text-black">-</div>
+          </div>
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="done-label">완료</div>
+            <div id="inbound-done" class="text-3xl font-extrabold text-black">-</div>
+          </div>
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="left-label">남은수</div>
+            <div id="inbound-left" class="text-3xl font-extrabold text-black">-</div>
+                    </div>
+                </div>
+                    </div>
+      <div class="bg-white rounded-xl p-8 flex flex-col items-center min-w-[320px]">
+        <div class="text-2xl font-extrabold mb-4 text-black" id="outbound-title">출고</div>
+        <div class="flex space-x-12">
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="planned-label-out">예정</div>
+            <div id="outbound-planned" class="text-3xl font-extrabold text-black">-</div>
+                </div>
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="done-label-out">완료</div>
+            <div id="outbound-done" class="text-3xl font-extrabold text-black">-</div>
+                    </div>
+          <div>
+            <div class="text-lg font-bold text-gray-700" id="left-label-out">남은수</div>
+            <div id="outbound-left" class="text-3xl font-extrabold text-black">-</div>
+                </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 주요 메뉴 -->
+    <div class="w-full max-w-2xl grid grid-cols-1 gap-8">
+        <a href="pda_receiving.html" class="block bg-blue-700 rounded-2xl shadow-lg p-8 text-center hover:bg-blue-800 transition">
+            <div class="text-3xl font-bold mb-2 text-white" data-i18n="menu_receiving">입고 처리</div>
+            <div class="text-lg text-blue-100" data-i18n="desc_receiving">바코드 스캔으로 입고 등록</div>
+        </a>
+        <a href="pda_shipping.html" class="block bg-green-700 rounded-2xl shadow-lg p-8 text-center hover:bg-green-800 transition">
+            <div class="text-3xl font-bold mb-2 text-white" data-i18n="menu_shipping">출고 처리</div>
+            <div class="text-lg text-green-100" data-i18n="desc_shipping">출하증/제품 바코드로 출고 확정</div>
+        </a>
+        <a href="pda_location.html" class="block bg-yellow-500 rounded-2xl shadow-lg p-8 text-center hover:bg-yellow-600 transition">
+            <div class="text-3xl font-bold mb-2 text-gray-900" data-i18n="menu_location">위치 찾기</div>
+            <div class="text-lg text-yellow-100" data-i18n="desc_location">제품/컨테이너 위치 맵에서 확인</div>
+        </a>
+    </div>
+
+    <script>
+        // 다국어 번역 데이터
+        const i18n = {
+            ko: {
+                title: 'PDA 시스템',
+                menu_receiving: '입고 처리',
+                desc_receiving: '바코드 스캔으로 입고 등록',
+                menu_shipping: '출고 처리',
+                desc_shipping: '출하증/제품 바코드로 출고 확정',
+                menu_location: '위치 찾기',
+                desc_location: '제품/컨테이너 위치 맵에서 확인',
+                logout: '로그아웃',
+            },
+            en: {
+                title: 'PDA System',
+                menu_receiving: 'Receiving',
+                desc_receiving: 'Register receiving by barcode scan',
+                menu_shipping: 'Shipping',
+                desc_shipping: 'Confirm shipping with instruction/product barcode',
+                menu_location: 'Location Finder',
+                desc_location: 'Check product/container location on map',
+                logout: 'Logout',
+            },
+            es: {
+                title: 'Sistema PDA',
+                menu_receiving: 'Recepción',
+                desc_receiving: 'Registrar recepción con escaneo de código de barras',
+                menu_shipping: 'Envío',
+                desc_shipping: 'Confirmar envío con código de barras de instrucción/producto',
+                menu_location: 'Buscador de Ubicación',
+                desc_location: 'Ver ubicación de producto/contenedor en el mapa',
+                logout: 'Cerrar sesión',
+            }
+        };
+        function setLang(lang) {
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.lang-btn[data-lang="' + lang + '"]').classList.add('active');
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (i18n[lang][key]) el.textContent = i18n[lang][key];
+            });
+            document.documentElement.lang = lang;
+            localStorage.setItem('pda_lang', lang);
+        }
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.onclick = () => setLang(btn.getAttribute('data-lang'));
+        });
+        // 초기 언어 설정
+        setLang(localStorage.getItem('pda_lang') || 'ko');
+        // 로그아웃 버튼 이벤트
+        document.getElementById('logoutBtn').onclick = function() {
+            localStorage.removeItem('user');
+            window.location.href = '/login.html';
+        };
+    </script>
+    <script>
+      // PDA용 config.js(window.CONFIG) 사용, admin/config/config.js와 분리
+      if (!window.CONFIG) {
+        alert('설정이 올바르게 로드되지 않았습니다. 새로고침 후에도 문제가 있으면 관리자에게 문의하세요.');
+        throw new Error('CONFIG not loaded');
+      }
+      const supabase = window.supabase?.createClient
+        ? window.supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_KEY)
+        : supabase.createClient(window.CONFIG.SUPABASE_URL, window.CONFIG.SUPABASE_KEY);
+    </script>
+    <script>
+    async function loadTodaySummary() {
+      const today = new Date().toISOString().slice(0, 10);
+      // 입고 예정: receiving_plan에서 receive_date가 오늘인 container_no 개수
+      const { data: plans } = await supabase
+        .from('receiving_plan')
+        .select('container_no')
+        .eq('receive_date', today);
+      const inboundPlanned = (plans || []).length;
+      // 입고 완료: receiving_log에서 received_at이 오늘인 row 개수
+      const { data: logs } = await supabase
+        .from('receiving_log')
+        .select('received_at')
+        .gte('received_at', today + 'T00:00:00')
+        .lte('received_at', today + 'T23:59:59');
+      const inboundDone = (logs || []).length;
+      // 출고 예정/완료/남은수 (컨테이너 개수 기준)
+      const { data: ships } = await supabase
+        .from('shipping_instruction')
+        .select('id, shipping_date, status')
+        .eq('shipping_date', today);
+      const outboundPlanned = (ships || []).length;
+      const outboundDone = (ships || []).filter(s => s.status === 'shipped').length;
+      const outboundLeft = (ships || []).filter(s => s.status === 'pending').length;
+      // 남은수
+      document.getElementById('inbound-planned').textContent = inboundPlanned;
+      document.getElementById('inbound-done').textContent = inboundDone;
+      document.getElementById('inbound-left').textContent = inboundPlanned - inboundDone;
+      document.getElementById('outbound-planned').textContent = outboundPlanned;
+      document.getElementById('outbound-done').textContent = outboundDone;
+      document.getElementById('outbound-left').textContent = outboundLeft;
+    }
+    window.addEventListener('DOMContentLoaded', loadTodaySummary);
+    </script>
+    <script>
+    // 카드 다국어 지원
+    const cardI18n = {
+      ko: {
+        inbound: '입고', outbound: '출고', planned: '예정', done: '완료', left: '남은수'
+      },
+      en: {
+        inbound: 'Inbound', outbound: 'Outbound', planned: 'Planned', done: 'Done', left: 'Left'
+      },
+      es: {
+        inbound: 'Entrada', outbound: 'Salida', planned: 'Planificado', done: 'Completado', left: 'Restante'
+      }
+    };
+    function setCardLang(lang) {
+      document.getElementById('inbound-title').textContent = cardI18n[lang].inbound;
+      document.getElementById('outbound-title').textContent = cardI18n[lang].outbound;
+      document.getElementById('planned-label').textContent = cardI18n[lang].planned;
+      document.getElementById('done-label').textContent = cardI18n[lang].done;
+      document.getElementById('left-label').textContent = cardI18n[lang].left;
+      document.getElementById('planned-label-out').textContent = cardI18n[lang].planned;
+      document.getElementById('done-label-out').textContent = cardI18n[lang].done;
+      document.getElementById('left-label-out').textContent = cardI18n[lang].left;
+    }
+    // 언어 변경 시 카드도 갱신
+    const origSetLang = window.setLang;
+    window.setLang = function(lang) {
+      origSetLang(lang);
+      setCardLang(lang);
+    };
+    // 최초 적용
+    setCardLang(document.documentElement.lang || 'ko');
+    </script>
+</body>
+</html> 

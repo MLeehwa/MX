@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">출고 처리</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        html, body { background: #1a1a1a; }
+        .lang-btn.active { box-shadow: 0 0 0 3px #2563eb55; font-weight: bold; }
+        .home-btn {
+            display: block;
+            width: 90%;
+            margin: 40px auto 20px auto;
+            padding: 16px;
+            font-size: 1.2rem;
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .home-btn:hover {
+            background: #145ea8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-start py-8 px-2">
+    <!-- 언어 선택 -->
+    <div class="w-full max-w-2xl flex justify-between items-center mb-8">
+        <h1 class="text-4xl font-extrabold text-white" data-i18n="title">출고 처리</h1>
+    </div>
+
+    <!-- 바코드 입력 -->
+    <div class="w-full max-w-2xl mb-8 flex flex-col items-center">
+      <input type="text" id="barcodeInput" class="w-full px-4 py-3 text-xl border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" style="background:#e6f9e6;" placeholder="바코드를 스캔하세요" data-i18n-placeholder="scan_barcode" autofocus>
+    </div>
+
+    <!-- 결과 표시/상태 메시지 -->
+    <div id="result" class="w-full max-w-2xl bg-white rounded-lg shadow-lg p-4 text-center">
+      <p class="text-lg" data-i18n="scan_result">스캔 결과가 여기에 표시됩니다.</p>
+    </div>
+
+    <script src="../config/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../js/pda_shipping.js"></script>
+
+    <!-- Add at the very bottom before </body> -->
+    <button class="home-btn" onclick="location.href='pda_index.html'" data-i18n="home_btn">홈으로</button>
+</body>
+</html> 

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="title_shipping_confirmation">Shipping Confirmation Admin</title>
+  <script type="module">
+    import { initSection } from '../js/shipping_confirmation_admin.js';
+    document.addEventListener('DOMContentLoaded', initSection);
+  </script>
+</head>
+<body class="bg-gray-100">
+  <div class="w-full mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold" data-i18n="title_shipping_confirmation">Shipping Confirmation Admin</h1>
+      <div class="flex gap-2">
+        <button class="lang-btn bg-blue-600 text-white px-3 py-1 rounded text-sm" data-lang="ko">한국어</button>
+        <button class="lang-btn bg-gray-300 text-gray-800 px-3 py-1 rounded text-sm" data-lang="en">English</button>
+      </div>
+    </div>
+    <!-- 필터 영역 -->
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h2 class="text-lg font-semibold mb-4" data-i18n="label_search">검색</h2>
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="label_part_no">Part No.</label>
+          <input type="text" id="partNoSearch" class="w-full px-3 py-2 border rounded-md" data-i18n-placeholder="ph_search_part_no" placeholder="Part No. 검색">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="label_status">상태</label>
+          <select id="filterStatus" class="w-full px-3 py-2 border rounded-md">
+            <option value="" data-i18n="option_all">전체</option>
+            <option value="pending" data-i18n="option_pending">대기중</option>
+            <option value="shipped" data-i18n="option_shipped">출고완료</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="label_shipping_date">출하일</label>
+          <input type="date" id="filterDate" class="w-full px-3 py-2 border rounded-md">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="label_min_qty">최소 수량</label>
+          <input type="number" id="minQty" class="w-full px-3 py-2 border rounded-md" data-i18n-placeholder="ph_min_qty" placeholder="최소 수량">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="label_max_qty">최대 수량</label>
+          <input type="number" id="maxQty" class="w-full px-3 py-2 border rounded-md" data-i18n-placeholder="ph_max_qty" placeholder="최대 수량">
+        </div>
+        <div class="flex items-end space-x-2 col-span-2">
+          <button id="searchBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" data-i18n="btn_search">검색</button>
+          <button id="resetBtn" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700" data-i18n="btn_reset">초기화</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 검색 결과 통계 -->
+    <div id="searchStats" class="mb-6">
+      <!-- 동적으로 채워짐 -->
+    </div>
+
+    <!-- 매칭 목록 -->
+    <div class="bg-white rounded-lg shadow-md p-6">
+      <h2 class="text-lg font-semibold mb-4" data-i18n="label_matching_list">매칭 목록</h2>
+      <div class="overflow-x-auto">
+        <table class="min-w-full">
+          <thead>
+            <tr class="bg-gray-50">
+              <th class="px-4 py-2 border" data-i18n="th_container_no">컨테이너 NO</th>
+              <th class="px-4 py-2 border" data-i18n="th_shipping_date">출하일</th>
+              <th class="px-4 py-2 border" data-i18n="th_part_no">Part No.</th>
+              <th class="px-4 py-2 border" data-i18n="th_qty">수량</th>
+              <th class="px-4 py-2 border" data-i18n="th_status">상태</th>
+              <th class="px-4 py-2 border" data-i18n="th_shipped_at">출고일</th>
+              <th class="px-4 py-2 border" data-i18n="th_action">작업</th>
+            </tr>
+          </thead>
+          <tbody id="matchingListBody">
+            <!-- 동적으로 채워짐 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 매칭 확인 모달 -->
+  <div id="matchingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold" data-i18n="modal_title_confirm_matching">매칭 확인</h3>
+        <button id="closeMatchingModal" class="text-gray-500 hover:text-gray-700">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="matchingModalBody" class="mb-4">
+        <!-- 동적으로 채워짐 -->
+      </div>
+      <div class="flex justify-end space-x-2">
+        <button id="cancelMatchingBtn" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700" data-i18n="btn_cancel">취소</button>
+        <button id="confirmMatchingBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700" data-i18n="btn_confirm">확인</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html> 

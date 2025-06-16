@@ -1,0 +1,87 @@
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Receiving Management</h3>
+        </div>
+        <div class="card-body">
+          <div class="row mb-3">
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>Container No.</label>
+                <input type="text" class="form-control" id="filterContainer" placeholder="Search Container No.">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>Part No.</label>
+                <input type="text" class="form-control" id="filterPartNo" placeholder="Search Part No.">
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>Status</label>
+                <select class="form-control" id="filterStatus">
+                  <option value="">All</option>
+                  <option value="waiting">Waiting</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label>&nbsp;</label>
+                <button type="button" class="btn btn-primary btn-block" id="btnExport">
+                  <i class="fas fa-file-excel"></i> Export to Excel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <h5 class="mb-3">Pending Receiving Plans (Not Yet Received)</h5>
+          <div class="table-responsive mb-4">
+            <table class="table table-bordered table-hover">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Container No.</th>
+                  <th>Part No.</th>
+                  <th>Plan Date</th>
+                  <th>Plan QTY</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="pendingPlanTableBody">
+                <!-- Pending plans will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+
+          <h5 class="mb-3">Receiving Report</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Container No.</th>
+                  <th>Part No.</th>
+                  <th>In Date</th>
+                  <th>Out Date</th>
+                  <th>Duration</th>
+                  <th>QTY</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="reportTableBody">
+                <!-- Data will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div> 

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WMS Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- ExcelJS -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="config/config.js"></script>
+  <script>
+    // 로그인 체크 함수
+    function checkAuth() {
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (!user || user.role !== 'admin') {
+        window.location.href = '/login.html';
+        return false;
+      }
+      return true;
+    }
+
+    // 로그아웃 함수
+    function logout() {
+      localStorage.removeItem('user');
+      window.location.href = '/login.html';
+    }
+
+    async function loadSection(name) {
+      if (!checkAuth()) return;
+      
+      console.log('Loading section:', name);
+      
+      // Cleanup previous section
+      const mainContent = document.getElementById("mainContent");
+      if (mainContent) {
+        console.log('Cleaning up previous section...');
+        // Remove all event listeners and cleanup
+        const oldContent = mainContent.innerHTML;
+        mainContent.innerHTML = '';
+        
+        // Remove old scripts
+        const oldScripts = document.querySelectorAll('script[data-section]');
+        oldScripts.forEach(script => {
+          console.log('Removing old script:', script.src);
+          script.remove();
+        });
+      }
+
+      // Load new section HTML
+      console.log('Loading section HTML...');
+      const res = await fetch(`./sections/${name}.html`);
+      const html = await res.text();
+      mainContent.innerHTML = html;
+      
+      // JS 파일명 매핑
+      let jsName = name;
+      if (name === 'receiving_plan') jsName = 'receiving';
+      if (name === 'shipping_plan') jsName = 'shipping';
+      if (name === 'receiving') jsName = 'receiving_admin';
+      
+      // Load section-specific JavaScript (동적 import)
+      console.log('Loading section JS:', jsName);
+      try {
+        const module = await import(`./js/${jsName}.js`);
+        console.log('Module loaded:', module);
+        if (typeof module.initSection === 'function') {
+          console.log('Calling initSection...');
+          await module.initSection();
+          console.log('initSection completed');
+        } else {
+          console.error('initSection function not found in module');
+        }
+      } catch (e) {
+        console.error('섹션 JS 로드/초기화 오류:', e);
+      }
+    }
+
+    // Add hash change handler
+    window.addEventListener('hashchange', () => {
+      location.reload();
+    });
+
+    // Initial load
+    window.addEventListener('load', () => {
+      if (!checkAuth()) return;
+      console.log('Window loaded');
+      const section = window.location.hash.slice(1) || 'receiving_plan';
+      loadSection(section);
+    });
+  </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="flex min-h-screen">
+    <!-- Sidebar -->
+    <aside class="w-150 bg-gray-800 text-white p-6">
+      <div class="mb-8 flex justify-between items-center">
+        <div>
+          <div class="text-2xl font-bold mb-2" data-i18n="admin_title">WMS Admin</div>
+          <div class="text-sm text-gray-400" data-i18n="admin_sub">Warehouse Management</div>
+        </div>
+        <div class="flex space-x-2">
+          <button class="lang-btn px-3 py-1 rounded bg-blue-600 text-white text-sm" data-lang="ko">한국어</button>
+          <button class="lang-btn px-3 py-1 rounded bg-gray-300 text-gray-800 text-sm" data-lang="en">English</button>
+        </div>
+      </div>
+      <nav class="space-y-2">
+        <a href="#receiving_plan" class="block py-2 px-3 rounded hover:bg-gray-700" data-i18n="menu_receiving">Receiving Plan</a>
+        <a href="#location_view" class="block py-2 px-3 rounded hover:bg-gray-700" data-i18n="menu_location">Location View</a>
+        <a href="#shipping_confirmation_admin" class="block py-2 px-3 rounded hover:bg-gray-700" data-i18n="menu_shipping">Shipping Confirmation</a>
+        <a href="#report" class="block py-2 px-3 rounded hover:bg-gray-700" data-i18n="menu_report">Report</a>
+        <a href="#daily_report" class="block py-2 px-3 rounded hover:bg-blue-700 bg-blue-600 text-white font-bold">일일 입출고 리포트</a>
+        <a href="location_master.html" target="_blank" class="block py-2 px-3 rounded hover:bg-gray-700 bg-green-700 text-white font-bold">장소 마스터 관리</a>
+      </nav>
+      <div class="mt-8">
+        <button onclick="logout()" class="text-sm text-gray-400 hover:text-white" data-i18n="logout">Logout</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 p-10">
+      <div id="mainContent" class="w-full mx-auto">
+        <h1 class="text-3xl font-bold" data-i18n="welcome">📦 Welcome to WMS Admin</h1>
+        <p class="text-gray-600 mt-2" data-i18n="main_guide">Please select a section from the left menu.</p>
+      </div>
+    </main>
+  </div>
+  <script>
+    // i18n 객체
+    const i18n = {
+      ko: {
+        admin_title: 'WMS 관리자',
+        admin_sub: '창고 관리 시스템',
+        menu_receiving: '입고 계획',
+        menu_location: '위치 보기',
+        menu_shipping: '출고 확정',
+        menu_report: '보고서',
+        logout: '로그아웃',
+        welcome: '📦 WMS 관리자에 오신 것을 환영합니다',
+        main_guide: '왼쪽 메뉴에서 섹션을 선택하세요.'
+      },
+      en: {
+        admin_title: 'WMS Admin',
+        admin_sub: 'Warehouse Management',
+        menu_receiving: 'Receiving Plan',
+        menu_location: 'Location View',
+        menu_shipping: 'Shipping Confirmation',
+        menu_report: 'Report',
+        logout: 'Logout',
+        welcome: '📦 Welcome to WMS Admin',
+        main_guide: 'Please select a section from the left menu.'
+      }
+    };
+    function setLang(lang) {
+      document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('bg-blue-600', 'text-white', 'bg-gray-300', 'text-gray-800'));
+      document.querySelector('.lang-btn[data-lang="' + lang + '"]').classList.add('bg-blue-600', 'text-white');
+      document.querySelectorAll('.lang-btn:not([data-lang="' + lang + '"])').forEach(btn => btn.classList.add('bg-gray-300', 'text-gray-800'));
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang][key]) el.textContent = i18n[lang][key];
+      });
+      document.documentElement.lang = lang;
+      localStorage.setItem('admin_lang', lang);
+    }
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.onclick = () => setLang(btn.getAttribute('data-lang'));
+    });
+    // 초기 언어 설정
+    setLang(localStorage.getItem('admin_lang') || 'ko');
+  </script>
+</body>
+</html>

@@ -198,74 +198,89 @@ barcodeInput.autofocus = true;
 barcodeInput.focus();
 barcodeInput.addEventListener('blur', () => setTimeout(() => barcodeInput.focus(), 100));
 
-// 카메라 스캔 버튼 추가
-if (!document.getElementById('barcodeCameraBtn')) {
-  const cameraBtn = document.createElement('button');
-  cameraBtn.id = 'barcodeCameraBtn';
-  cameraBtn.textContent = 'Camera Scan';
-  cameraBtn.className = 'bg-yellow-500 text-white px-4 py-2 rounded mb-2';
-  cameraBtn.style.marginTop = '12px';
-  barcodeInput.parentNode.appendChild(cameraBtn);
+// === [카메라 바코드 스캔 기능 개선] ===
+let cameraStream = null;
 
-  const cameraPreview = document.createElement('div');
-  cameraPreview.style.display = 'none';
-  cameraPreview.style.position = 'relative';
-  cameraPreview.innerHTML = `
-    <video style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
-    <canvas style="display:none;"></canvas>
-    <button style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;">×</button>
-  `;
-  barcodeInput.parentNode.appendChild(cameraPreview);
+// 카메라 프리뷰 영역 생성
+const cameraPreview = document.createElement('div');
+cameraPreview.id = 'cameraPreview';
+cameraPreview.style.display = 'none';
+cameraPreview.innerHTML = `
+  <video id="barcodeVideo" style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
+  <canvas id="barcodeCanvas" style="display:none;"></canvas>
+  <button id="closeCameraBtn" style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;">×</button>
+`;
+document.body.appendChild(cameraPreview);
 
-  let cameraStream = null;
+// 카메라 버튼 이벤트 리스너
+const cameraBtn = document.getElementById('cameraBtn');
+if (cameraBtn) {
   cameraBtn.addEventListener('click', async () => {
-    cameraPreview.style.display = 'block';
-    const video = cameraPreview.querySelector('video');
-    const closeBtn = cameraPreview.querySelector('button');
-    const constraints = { video: { facingMode: { exact: 'environment' } } };
     try {
-      cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (e) {
-      cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    }
-    video.srcObject = cameraStream;
-    video.setAttribute('playsinline', true);
-    video.play();
-    scanBarcodeFromCamera(video, cameraPreview.querySelector('canvas'), barcodeInput, cameraPreview, () => cameraStream);
-    closeBtn.onclick = () => {
-      cameraPreview.style.display = 'none';
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
+      cameraPreview.style.display = 'block';
+      const video = document.getElementById('barcodeVideo');
+      const closeBtn = document.getElementById('closeCameraBtn');
+      
+      // 후방 카메라 우선 시도
+      const constraints = {
+        video: { facingMode: { exact: 'environment' } }
+      };
+      
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) {
+        console.log('후방 카메라 접근 실패, 기본 카메라 사용:', e);
+        // 후방 카메라가 없으면 기본 카메라
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
-    };
+      
+      video.srcObject = cameraStream;
+      video.setAttribute('playsinline', true);
+      await video.play();
+      
+      scanBarcodeFromCamera();
+      
+      closeBtn.onclick = () => {
+        cameraPreview.style.display = 'none';
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(track => track.stop());
+          cameraStream = null;
+        }
+      };
+    } catch (error) {
+      console.error('카메라 접근 오류:', error);
+      alert('카메라에 접근할 수 없습니다. 카메라 권한을 확인해주세요.');
+      cameraPreview.style.display = 'none';
+    }
   });
 }
-if (!window.jsQR) {
-  const script = document.createElement('script');
-  script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-  document.head.appendChild(script);
-}
-function scanBarcodeFromCamera(video, canvas, inputEl, previewEl, getStream) {
+
+async function scanBarcodeFromCamera() {
+  const video = document.getElementById('barcodeVideo');
+  const canvas = document.getElementById('barcodeCanvas');
   const ctx = canvas.getContext('2d');
   let scanning = true;
+  
   async function tick() {
-    if (!scanning || previewEl.style.display === 'none') return;
+    if (!scanning || cameraPreview.style.display === 'none') return;
+    
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
       if (window.jsQR) {
         const code = window.jsQR(imageData.data, canvas.width, canvas.height);
         if (code && code.data) {
           scanning = false;
-          inputEl.value = code.data;
-          inputEl.dispatchEvent(new Event('input'));
-          previewEl.style.display = 'none';
-          const stream = getStream();
-          if (stream) {
-            stream.getTracks().forEach(track => track.stop());
+          // 바코드 인풋에 값 입력 및 자동 처리
+          barcodeInput.value = code.data;
+          barcodeInput.dispatchEvent(new Event('input'));
+          cameraPreview.style.display = 'none';
+          if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
           }
           return;
         }

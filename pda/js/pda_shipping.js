@@ -79,118 +79,167 @@ barcodeInput.autofocus = true;
 barcodeInput.focus();
 barcodeInput.addEventListener('blur', () => setTimeout(() => barcodeInput.focus(), 100));
 
-// === [카메라 바코드 스캔 기능 개선] ===
-let cameraStream = null;
+// === [카메라 바코드/QR 스캔 기능 개선: receiving.js와 동일하게] ===
+let isScanning = false;
 
-// 카메라 프리뷰 영역 생성
-const cameraPreview = document.createElement('div');
-cameraPreview.id = 'cameraPreview';
-cameraPreview.style.display = 'none';
-cameraPreview.innerHTML = `
-  <video id="barcodeVideo" style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
-  <canvas id="barcodeCanvas" style="display:none;"></canvas>
-  <button id="closeCameraBtn" style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;">×</button>
-`;
-document.body.appendChild(cameraPreview);
+document.addEventListener('DOMContentLoaded', function() {
+  // ... 기존 언어/버튼 처리 ...
 
-// 카메라 버튼 이벤트 리스너
-const cameraBtn = document.getElementById('cameraBtn');
-if (cameraBtn) {
-  cameraBtn.addEventListener('click', async () => {
-    try {
-      cameraPreview.style.display = 'block';
-      const video = document.getElementById('barcodeVideo');
-      const closeBtn = document.getElementById('closeCameraBtn');
-      
-      // 후방 카메라 우선 시도
-      const constraints = {
-        video: { facingMode: { exact: 'environment' } }
-      };
-      
-      try {
-        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (e) {
-        console.log('후방 카메라 접근 실패, 기본 카메라 사용:', e);
-        // 후방 카메라가 없으면 기본 카메라
-        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      }
-      
-      video.srcObject = cameraStream;
-      video.setAttribute('playsinline', true);
-      await video.play();
-      
-      scanBarcodeFromCamera();
-      
-      closeBtn.onclick = () => {
-        cameraPreview.style.display = 'none';
-        if (cameraStream) {
-          cameraStream.getTracks().forEach(track => track.stop());
-          cameraStream = null;
-        }
-      };
-    } catch (error) {
-      console.error('카메라 접근 오류:', error);
-      alert('카메라에 접근할 수 없습니다. 카메라 권한을 확인해주세요.');
-      cameraPreview.style.display = 'none';
-    }
-  });
-}
-
-async function scanBarcodeFromCamera() {
-  const video = document.getElementById('barcodeVideo');
-  const canvas = document.getElementById('barcodeCanvas');
-  const ctx = canvas.getContext('2d');
-  let scanning = true;
-  
-  // jsQR 라이브러리 확인
-  if (!window.jsQR) {
-    console.error('jsQR 라이브러리가 로드되지 않았습니다.');
-    alert('QR 스캔 라이브러리를 불러올 수 없습니다. 페이지를 새로고침해주세요.');
-    return;
+  // 카메라 프리뷰 영역 생성 (quaggaVideo 포함)
+  let cameraPreview = document.getElementById('cameraPreview');
+  if (!cameraPreview) {
+    cameraPreview = document.createElement('div');
+    cameraPreview.id = 'cameraPreview';
+    cameraPreview.style.display = 'none';
+    cameraPreview.innerHTML = `
+      <video id="barcodeVideo" style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
+      <video id="quaggaVideo" style="display:none;width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
+      <canvas id="barcodeCanvas" style="display:none;"></canvas>
+      <button id="closeCameraBtn" style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;">×</button>
+    `;
+    document.body.appendChild(cameraPreview);
   }
-  
-  console.log('카메라 스캔 시작...');
-  
-  async function tick() {
-    if (!scanning || cameraPreview.style.display === 'none') return;
-    
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+
+  const cameraBtn = document.getElementById('cameraBtn');
+  if (cameraBtn) {
+    cameraBtn.addEventListener('click', async () => {
+      if (isScanning) {
+        stopScanning();
+        return;
+      }
       try {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // QR 코드 스캔 시도
-        const code = window.jsQR(imageData.data, canvas.width, canvas.height, {
-          inversionAttempts: "dontInvert",
-        });
-        
-        if (code && code.data) {
-          console.log('QR 코드 인식 성공:', code.data);
-          scanning = false;
-          
-          // 바코드 인풋에 값 입력 및 자동 처리
-          barcodeInput.value = code.data;
-          barcodeInput.dispatchEvent(new Event('input'));
-          
-          // 카메라 정리
-          cameraPreview.style.display = 'none';
-          if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            cameraStream = null;
+        cameraPreview.style.display = 'block';
+        const video = document.getElementById('barcodeVideo');
+        const quaggaVideo = document.getElementById('quaggaVideo');
+        const closeBtn = document.getElementById('closeCameraBtn');
+        // 후방 카메라 우선 시도
+        const constraints = {
+          video: {
+            facingMode: { exact: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           }
-          return;
+        };
+        let cameraStream;
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (e) {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+          });
         }
+        video.srcObject = cameraStream;
+        quaggaVideo.srcObject = cameraStream;
+        video.setAttribute('playsinline', true);
+        quaggaVideo.setAttribute('playsinline', true);
+        await video.play();
+        await quaggaVideo.play();
+        startScanning();
+        closeBtn.onclick = () => { stopScanning(); };
       } catch (error) {
-        console.error('QR 스캔 중 오류:', error);
+        alert('카메라에 접근할 수 없습니다. 권한을 확인해주세요.');
+        cameraPreview.style.display = 'none';
       }
-    }
-    requestAnimationFrame(tick);
+    });
   }
-  
-  tick();
-}
+
+  function startScanning() {
+    isScanning = true;
+    if (cameraBtn) {
+      cameraBtn.innerHTML = '<i class="fas fa-stop mr-2"></i>스캔 중지';
+      cameraBtn.className = 'mt-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600';
+    }
+    scanQRCode();
+    scanBarcode();
+  }
+  function stopScanning() {
+    isScanning = false;
+    if (cameraBtn) {
+      cameraBtn.innerHTML = '<i class="fas fa-camera mr-2"></i>카메라 스캔 (QR+바코드)';
+      cameraBtn.className = 'mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600';
+    }
+    cameraPreview.style.display = 'none';
+    const video = document.getElementById('barcodeVideo');
+    const quaggaVideo = document.getElementById('quaggaVideo');
+    if (video && video.srcObject) {
+      video.srcObject.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+    }
+    if (quaggaVideo && quaggaVideo.srcObject) {
+      quaggaVideo.srcObject.getTracks().forEach(track => track.stop());
+      quaggaVideo.srcObject = null;
+    }
+    if (window.Quagga) {
+      Quagga.stop();
+    }
+  }
+  async function scanQRCode() {
+    const video = document.getElementById('barcodeVideo');
+    const canvas = document.getElementById('barcodeCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let scanAttempts = 0;
+    if (!window.jsQR) return;
+    async function tick() {
+      if (!isScanning || cameraPreview.style.display === 'none') return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        try {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          let code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+          if (!code) code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+          if (code && code.data) {
+            isScanning = false;
+            barcodeInput.value = code.data;
+            barcodeInput.dispatchEvent(new Event('input'));
+            stopScanning();
+            return;
+          }
+        } catch (e) {}
+      }
+      requestAnimationFrame(tick);
+    }
+    tick();
+  }
+  function scanBarcode() {
+    if (!window.Quagga) return;
+    if (Quagga.isRunning) Quagga.stop();
+    Quagga.init({
+      inputStream: {
+        name: 'Live',
+        type: 'LiveStream',
+        target: '#quaggaVideo',
+        constraints: {
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          facingMode: 'environment',
+          aspectRatio: { min: 1, max: 2 }
+        }
+      },
+      decoder: {
+        readers: [
+          'code_128_reader', 'code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'codabar_reader'
+        ],
+        multiple: false
+      },
+      locate: true,
+      frequency: 10,
+      debug: false
+    }, function(err) {
+      if (err) return;
+      Quagga.start();
+    });
+    Quagga.onDetected(function(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        isScanning = false;
+        barcodeInput.value = result.codeResult.code;
+        barcodeInput.dispatchEvent(new Event('input'));
+        stopScanning();
+      }
+    });
+  }
+});
 
 // 바코드 입력 이벤트: 2단계 출고 처리
 barcodeInput.addEventListener('keydown', async (e) => {

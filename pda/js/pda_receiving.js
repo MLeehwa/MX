@@ -430,11 +430,11 @@ barcodeInput.addEventListener('keydown', async (e) => {
 // 바코드 스캔 후 자동 입고 처리 함수
 async function processReceivingBarcode(barcodeValue) {
   try {
-    // 입고지시서 바코드로 검색
+    // 입고지시서 바코드로 검색 (container_no 컬럼에서 검색)
     const { data: receivingPlan, error } = await supabase
       .from('receiving_plan')
-      .select('id, label_id, part_no, quantity, location_code')
-      .eq('barcode', barcodeValue)
+      .select('id, label_id, part_no, quantity, location_code, container_no')
+      .eq('container_no', barcodeValue)  // barcode 대신 container_no로 검색
       .maybeSingle();
     
     if (error || !receivingPlan) {
@@ -457,6 +457,7 @@ async function processReceivingBarcode(barcodeValue) {
           <p><strong>품번:</strong> ${receivingPlan.part_no || 'N/A'}</p>
           <p><strong>수량:</strong> ${receivingPlan.quantity || 'N/A'}</p>
           <p><strong>위치:</strong> ${receivingPlan.location_code || 'N/A'}</p>
+          <p><strong>컨테이너 번호:</strong> ${receivingPlan.container_no || 'N/A'}</p>
         </div>
       `;
       receivingInfo.classList.remove('hidden');

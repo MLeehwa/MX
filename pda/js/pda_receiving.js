@@ -499,11 +499,12 @@ async function completeReceiving(receivingPlan) {
     
     const etTime = new Date();
     
-    // 입고 로그 기록
+    // 입고 로그 기록 (container_no 포함)
     const { error: logError } = await supabase
       .from('receiving_log')
       .insert({
         label_id: receivingPlan.label_id,
+        container_no: receivingPlan.container_no,  // container_no 추가
         received_at: etTime.toISOString(),
         confirmed_by: 'pda_user',
         quantity: quantity,

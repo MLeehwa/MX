@@ -91,11 +91,65 @@ document.addEventListener('DOMContentLoaded', function() {
     cameraPreview = document.createElement('div');
     cameraPreview.id = 'cameraPreview';
     cameraPreview.style.display = 'none';
+    cameraPreview.style.position = 'relative';
+    cameraPreview.style.textAlign = 'center';
     cameraPreview.innerHTML = `
-      <video id="barcodeVideo" style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
-      <video id="quaggaVideo" style="display:none;width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
-      <canvas id="barcodeCanvas" style="display:none;"></canvas>
-      <button id="closeCameraBtn" style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;">×</button>
+      <div style="position: relative; display: inline-block;">
+        <video id="barcodeVideo" style="width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
+        <video id="quaggaVideo" style="display:none;width:100%;max-width:400px;border:2px solid #333;border-radius:8px;"></video>
+        <canvas id="barcodeCanvas" style="display:none;"></canvas>
+        
+        <!-- 바코드 스캔 가이드 오버레이 -->
+        <div id="scanGuide" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none;">
+          <!-- 스캔 영역 테두리 (더 크게) -->
+          <div style="width: 320px; height: 160px; border: 3px solid #00ff00; border-radius: 8px; position: relative;">
+            <!-- 모서리 표시 -->
+            <div style="position: absolute; top: -3px; left: -3px; width: 20px; height: 20px; border-top: 4px solid #00ff00; border-left: 4px solid #00ff00;"></div>
+            <div style="position: absolute; top: -3px; right: -3px; width: 20px; height: 20px; border-top: 4px solid #00ff00; border-right: 4px solid #00ff00;"></div>
+            <div style="position: absolute; bottom: -3px; left: -3px; width: 20px; height: 20px; border-bottom: 4px solid #00ff00; border-left: 4px solid #00ff00;"></div>
+            <div style="position: absolute; bottom: -3px; right: -3px; width: 20px; height: 20px; border-bottom: 4px solid #00ff00; border-right: 4px solid #00ff00;"></div>
+            
+            <!-- 중앙 십자선 -->
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px;">
+              <div style="position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background: #00ff00; transform: translateY(-50%);"></div>
+              <div style="position: absolute; top: 0; left: 50%; width: 2px; height: 100%; background: #00ff00; transform: translateX(-50%);"></div>
+            </div>
+          </div>
+          
+          <!-- 스캔 가이드 텍스트 -->
+          <div style="position: absolute; top: -50px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 15px; border-radius: 8px; font-size: 14px; white-space: nowrap; text-align: center;">
+            📱 바코드를 사각형 안에 맞춰주세요<br>
+            <small style="font-size: 12px; opacity: 0.8;">거리: 10-30cm, 각도: 90도</small>
+          </div>
+          
+          <!-- 스캔 라인 애니메이션 -->
+          <div id="scanLine" style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #00ff00, transparent); animation: scan 2s linear infinite;"></div>
+        </div>
+        
+        <!-- 스캔 상태 표시 -->
+        <div id="scanStatus" style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px;">
+          🔍 바코드 스캔 중...
+        </div>
+        
+        <button id="closeCameraBtn" style="position:absolute;top:8px;right:8px;z-index:10;background:#fff;color:#333;border-radius:50%;width:36px;height:36px;font-size:20px;border:none;cursor:pointer;">×</button>
+      </div>
+      
+      <!-- 스캔 라인 애니메이션 CSS -->
+      <style>
+        @keyframes scan {
+          0% { top: 0; }
+          100% { top: 100%; }
+        }
+        
+        #scanGuide {
+          animation: pulse 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes pulse {
+          from { opacity: 0.8; }
+          to { opacity: 1; }
+        }
+      </style>
     `;
     document.body.appendChild(cameraPreview);
   }
@@ -117,15 +171,22 @@ document.addEventListener('DOMContentLoaded', function() {
           video: {
             facingMode: { exact: 'environment' },
             width: { ideal: 1280 },
-            height: { ideal: 720 }
+            height: { ideal: 720 },
+            zoom: { ideal: 2.0 }, // 줌 기능 추가
+            focusMode: 'continuous' // 자동 포커스
           }
         };
         let cameraStream;
         try {
           cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (e) {
+          // 줌이 지원되지 않는 경우 기본 설정으로 시도
           cameraStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+            video: { 
+              width: { ideal: 1280 }, 
+              height: { ideal: 720 },
+              facingMode: 'environment'
+            }
           });
         }
         video.srcObject = cameraStream;
@@ -178,26 +239,80 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvas = document.getElementById('barcodeCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     let scanAttempts = 0;
+    const maxAttempts = 100; // QR 스캔 최대 시도 횟수
+    
     if (!window.jsQR) return;
+    
     async function tick() {
       if (!isScanning || cameraPreview.style.display === 'none') return;
+      
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         try {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          let code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
-          if (!code) code = window.jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
-          if (code && code.data) {
+          
+          // 다양한 QR 스캔 옵션 시도
+          let code = null;
+          
+          // 1. 기본 스캔
+          code = window.jsQR(imageData.data, canvas.width, canvas.height, { 
+            inversionAttempts: 'dontInvert' 
+          });
+          
+          // 2. 역전 스캔
+          if (!code) {
+            code = window.jsQR(imageData.data, canvas.width, canvas.height, { 
+              inversionAttempts: 'attemptBoth' 
+            });
+          }
+          
+          // 3. 더 관대한 설정으로 스캔
+          if (!code) {
+            code = window.jsQR(imageData.data, canvas.width, canvas.height, { 
+              inversionAttempts: 'attemptBoth',
+              minConfidence: 0.1 // 더 낮은 신뢰도 허용
+            });
+          }
+          
+          if (code && code.data && code.data.length >= 3) {
             isScanning = false;
+            // 스캔 성공 시 가이드 숨기고 성공 메시지 표시
+            const scanGuide = document.getElementById('scanGuide');
+            const scanStatus = document.getElementById('scanStatus');
+            if (scanGuide) scanGuide.style.display = 'none';
+            if (scanStatus) {
+              scanStatus.textContent = '✅ QR 코드 스캔 성공!';
+              scanStatus.style.background = 'rgba(0,255,0,0.8)';
+            }
+            
             barcodeInput.value = code.data;
             barcodeInput.dispatchEvent(new Event('input'));
             stopScanning();
             return;
           }
-        } catch (e) {}
+          
+          scanAttempts++;
+          
+          // 스캔 상태 업데이트
+          const scanStatus = document.getElementById('scanStatus');
+          if (scanStatus) {
+            scanStatus.textContent = `🔍 QR 코드 스캔 중... (${scanAttempts}/${maxAttempts})`;
+          }
+          
+          // 최대 시도 횟수 초과 시 재시작
+          if (scanAttempts > maxAttempts) {
+            scanAttempts = 0;
+            // 잠시 대기 후 재시작
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          
+        } catch (e) {
+          console.error('QR 스캔 오류:', e);
+        }
       }
+      
       requestAnimationFrame(tick);
     }
     tick();
@@ -219,23 +334,87 @@ document.addEventListener('DOMContentLoaded', function() {
       },
       decoder: {
         readers: [
-          'code_128_reader', 'code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'codabar_reader'
+          'code_128_reader', 'code_39_reader', 'ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'codabar_reader',
+          'i2of5_reader', '2of5_reader', 'code_93_reader'
         ],
-        multiple: false
+        multiple: false,
+        debug: {
+          showCanvas: false,
+          showPatches: false,
+          showFoundPatches: false,
+          showSkeleton: false,
+          showLabels: false,
+          showPatchLabels: false,
+          showRemainingPatchLabels: false,
+          boxFromPatches: {
+            showTransformed: false,
+            showTransformedBox: false,
+            showBB: false
+          }
+        }
       },
       locate: true,
-      frequency: 10,
-      debug: false
+      frequency: 5, // 더 빠른 스캔 주기
+      debug: false,
+      // 스캔 영역 설정
+      area: {
+        top: '25%',
+        right: '10%',
+        left: '10%',
+        bottom: '25%'
+      }
     }, function(err) {
-      if (err) return;
+      if (err) {
+        console.error('Quagga 초기화 오류:', err);
+        return;
+      }
       Quagga.start();
     });
+    
+    // 스캔 시도 횟수 추적
+    let scanAttempts = 0;
+    const maxAttempts = 50; // 최대 시도 횟수
+    
     Quagga.onDetected(function(result) {
+      scanAttempts++;
       if (result && result.codeResult && result.codeResult.code) {
-        isScanning = false;
-        barcodeInput.value = result.codeResult.code;
-        barcodeInput.dispatchEvent(new Event('input'));
-        stopScanning();
+        // 코드 길이 검증 (최소 3자 이상)
+        if (result.codeResult.code.length >= 3) {
+          isScanning = false;
+          // 스캔 성공 시 가이드 숨기고 성공 메시지 표시
+          const scanGuide = document.getElementById('scanGuide');
+          const scanStatus = document.getElementById('scanStatus');
+          if (scanGuide) scanGuide.style.display = 'none';
+          if (scanStatus) {
+            scanStatus.textContent = '✅ 바코드 스캔 성공!';
+            scanStatus.style.background = 'rgba(0,255,0,0.8)';
+          }
+          
+          barcodeInput.value = result.codeResult.code;
+          barcodeInput.dispatchEvent(new Event('input'));
+          stopScanning();
+        }
+      }
+      
+      // 최대 시도 횟수 초과 시 재시작
+      if (scanAttempts > maxAttempts) {
+        scanAttempts = 0;
+        Quagga.stop();
+        setTimeout(() => {
+          if (isScanning) {
+            Quagga.start();
+          }
+        }, 1000);
+      }
+    });
+    
+    // 스캔 진행 중 상태 업데이트
+    Quagga.onProcessed(function(result) {
+      if (result) {
+        const scanStatus = document.getElementById('scanStatus');
+        if (scanStatus) {
+          scanStatus.textContent = `🔍 바코드 스캔 중... (${scanAttempts}/${maxAttempts})`;
+        }
       }
     });
   }

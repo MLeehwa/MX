@@ -430,19 +430,33 @@ barcodeInput.addEventListener('keydown', async (e) => {
 // 바코드 스캔 후 자동 입고 처리 함수
 async function processReceivingBarcode(barcodeValue) {
   try {
-    // 입고지시서 바코드로 검색 (container_no 컬럼에서 검색)
-    const { data: receivingPlan, error } = await supabase
+    console.log('🔍 스캔된 바코드 값:', barcodeValue);
+    console.log('🔍 검색 조건: container_no =', barcodeValue);
+    
+    // container_no로 receiving_plan 검색
+    let { data: receivingPlan, error } = await supabase
       .from('receiving_plan')
-      .select('id, label_id, part_no, quantity, location_code, container_no')
-      .eq('container_no', barcodeValue)  // barcode 대신 container_no로 검색
+      .select('id, type, container_no, receive_date, trailer_seq')
+      .eq('container_no', barcodeValue)
       .maybeSingle();
     
-    if (error || !receivingPlan) {
-      showMessage('입고지시서를 찾을 수 없습니다.', 'error');
+    console.log('📊 검색 결과 (container_no):', { receivingPlan, error });
+    
+    if (error) {
+      console.error('❌ 데이터베이스 오류:', error);
+      showMessage('데이터베이스 조회 중 오류가 발생했습니다.', 'error');
       barcodeInput.value = '';
       return;
     }
     
+    if (!receivingPlan) {
+      console.log('❌ 입고지시서를 찾을 수 없음');
+      showMessage(`입고지시서를 찾을 수 없습니다. (검색값: ${barcodeValue})`, 'error');
+      barcodeInput.value = '';
+      return;
+    }
+    
+    console.log('✅ 입고지시서 찾음:', receivingPlan);
     currentReceivingPlan = receivingPlan;
     
     // 입고 정보 표시
@@ -453,11 +467,10 @@ async function processReceivingBarcode(barcodeValue) {
       receivingInfo.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow">
           <h3 class="text-lg font-semibold mb-2">입고 정보</h3>
-          <p><strong>라벨 ID:</strong> ${receivingPlan.label_id || 'N/A'}</p>
-          <p><strong>품번:</strong> ${receivingPlan.part_no || 'N/A'}</p>
-          <p><strong>수량:</strong> ${receivingPlan.quantity || 'N/A'}</p>
-          <p><strong>위치:</strong> ${receivingPlan.location_code || 'N/A'}</p>
           <p><strong>컨테이너 번호:</strong> ${receivingPlan.container_no || 'N/A'}</p>
+          <p><strong>타입:</strong> ${receivingPlan.type || 'N/A'}</p>
+          <p><strong>입고 예정일:</strong> ${receivingPlan.receive_date ? new Date(receivingPlan.receive_date).toLocaleDateString() : 'N/A'}</p>
+          <p><strong>트레일러 순번:</strong> ${receivingPlan.trailer_seq || 'N/A'}</p>
         </div>
       `;
       receivingInfo.classList.remove('hidden');
@@ -465,8 +478,6 @@ async function processReceivingBarcode(barcodeValue) {
     
     if (receivingForm) {
       receivingForm.classList.remove('hidden');
-      document.getElementById('quantity').value = receivingPlan.quantity || '';
-      document.getElementById('location').value = receivingPlan.location_code || '';
     }
     
     showMessage('입고지시서 스캔 완료. 자동으로 입고를 처리합니다...', 'success');
@@ -480,7 +491,7 @@ async function processReceivingBarcode(barcodeValue) {
     barcodeInput.focus();
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ 예상치 못한 오류:', error);
     showMessage('입고지시서 검색 중 오류가 발생했습니다.', 'error');
     barcodeInput.value = '';
   }
@@ -489,26 +500,15 @@ async function processReceivingBarcode(barcodeValue) {
 // 입고 완료 처리 함수
 async function completeReceiving(receivingPlan) {
   try {
-    const quantity = receivingPlan.quantity || document.getElementById('quantity').value;
-    const location = normalizeLocationCode(receivingPlan.location_code || document.getElementById('location').value);
-    
-    if (!quantity || !location) {
-      showMessage('수량과 위치 정보가 부족합니다.', 'error');
-      return;
-    }
-    
     const etTime = new Date();
     
-    // 입고 로그 기록 (container_no 포함)
+    // 입고 로그 기록
     const { error: logError } = await supabase
       .from('receiving_log')
       .insert({
-        label_id: receivingPlan.label_id,
-        container_no: receivingPlan.container_no,  // container_no 추가
+        label_id: receivingPlan.container_no, // container_no를 label_id로 사용
         received_at: etTime.toISOString(),
-        confirmed_by: 'pda_user',
-        quantity: quantity,
-        location_code: location
+        confirmed_by: 'pda_user'
       });
     
     if (logError) throw logError;
@@ -528,9 +528,6 @@ function resetForm() {
   
   if (receivingInfo) receivingInfo.classList.add('hidden');
   if (receivingForm) receivingForm.classList.add('hidden');
-  
-  document.getElementById('quantity').value = '';
-  document.getElementById('location').value = '';
   currentReceivingPlan = null;
 }
 

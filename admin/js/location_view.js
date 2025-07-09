@@ -567,19 +567,18 @@ function showLocationModal(loc, info) {
       <div><b>컨테이너/트레일러:</b> ${info.container_id || '-'}</div>
     `;
     shippingOrderArea.innerHTML = `<div class="mt-4 text-sm text-gray-500">출하지시서 상태 확인 중...</div>`;
-    // 출하지시서 존재 여부 확인 (이하 기존 코드 동일)
+    // 출하지시서 존재 여부 확인 - 컨테이너 단위로 확인
     (async () => {
       const { data: exist } = await supabase.from('shipping_instruction')
         .select('*')
-        .eq('location_code', loc)
-        .eq('part_no', info.part_no)
+        .eq('container_no', info.container_id)
         .order('created_at', { ascending: false })
         .limit(1);
       if (exist && exist.length > 0) {
         // 이미 출하지시서가 있으면 프린트 버튼만
         const si = exist[0];
         shippingOrderArea.innerHTML = `
-          <div class="mb-2 text-green-700 font-bold">출하지시서가 이미 생성됨</div>
+          <div class="mb-2 text-green-700 font-bold">이 컨테이너의 출하지시서가 이미 생성됨</div>
           <button id="printShippingBtn" class="bg-blue-600 text-white px-4 py-1 rounded">출하지시서 프린트</button>
         `;
         document.getElementById('printShippingBtn').onclick = () => printShippingLabel(si);
@@ -602,27 +601,43 @@ function showLocationModal(loc, info) {
           }
           const barcode = info.label_id || info.container_id;
 
-          // 1. 해당 Location의 모든 실물(label_id) 조회
+          // 1. 해당 컨테이너의 모든 실물(label_id) 조회 - part_no 포함
           const { data: items, error: itemsError } = await supabase
             .from('receiving_items')
-            .select('label_id, quantity')
-            .eq('location_code', info.raw_location_code);
+            .select('label_id, quantity, part_no')
+            .eq('container_no', info.container_id);
 
           if (itemsError || !items || items.length === 0) {
-            document.getElementById('shippingResultMsg').textContent = '이 위치에 실물(label_id)이 없습니다.';
+            document.getElementById('shippingResultMsg').textContent = '이 컨테이너에 실물(label_id)이 없습니다.';
             return;
           }
 
-          // 2. 출하증 생성
+          // 2. 파트별 수량 계산
+          const partQuantities = {};
+          items.forEach(item => {
+            const partNo = item.part_no;
+            if (partNo) {
+              partQuantities[partNo] = (partQuantities[partNo] || 0) + (item.quantity || 0);
+            }
+          });
+
+          // 3. 출하증 생성 - 컨테이너 단위로 생성
+          // 컨테이너의 총 수량 계산
+          const totalQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+          
+          // 파트별 수량 정보를 JSON으로 저장
+          const partQuantitiesJson = JSON.stringify(partQuantities);
+          
           const { data, error } = await supabase.from('shipping_instruction').insert({
             location_code: loc,
             part_no: info.part_no,
-            qty: info.qty,
+            qty: totalQty, // 컨테이너의 총 수량
             shipping_date: shippingDate,
             status: 'pending',
             barcode: crypto.randomUUID(),
             container_no: info.container_id,
-            label_id: items.length === 1 ? items[0].label_id : null
+            label_id: null, // 컨테이너 단위이므로 label_id는 null
+            part_quantities: partQuantitiesJson // 파트별 수량 정보 저장
           }).select('*').single();
           if (error) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성 실패: ' + error.message;
@@ -641,7 +656,7 @@ function showLocationModal(loc, info) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성(실물 매핑) 실패: ' + itemError.message;
             return;
           }
-          document.getElementById('shippingResultMsg').textContent = '출하지시서가 생성되었습니다!';
+          document.getElementById('shippingResultMsg').textContent = '컨테이너 출하지시서가 생성되었습니다!';
           lastSI = data;
           const printBtn = document.getElementById('printShippingBtn');
           printBtn.disabled = false;
@@ -669,6 +684,16 @@ function printShippingLabel(si) {
   const description = si.description || '-';
   const remarks = si.remarks || '-';
   const location = si.location_code || '-';
+  
+  // 파트별 수량 정보 파싱
+  let partQuantities = {};
+  if (si.part_quantities) {
+    try {
+      partQuantities = JSON.parse(si.part_quantities);
+    } catch (e) {
+      console.error('Error parsing part_quantities:', e);
+    }
+  }
 
   const printHtml = `
     <style>
@@ -716,15 +741,28 @@ function printShippingLabel(si) {
           <th>Location</th>
           <th>Remarks</th>
         </tr>
-        <tr>
-          <td>1</td>
-          <td>${model}</td>
-          <td>${description}</td>
-          <td>${si.qty}</td>
-          <td>EA</td>
-          <td>${location}</td>
-          <td>${remarks}</td>
-        </tr>
+        ${Object.entries(partQuantities).map(([partNo, qty], index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${partNo}</td>
+            <td>${description}</td>
+            <td>${qty}</td>
+            <td>EA</td>
+            <td>${location}</td>
+            <td>${remarks}</td>
+          </tr>
+        `).join('')}
+        ${Object.keys(partQuantities).length === 0 ? `
+          <tr>
+            <td>1</td>
+            <td>${model}</td>
+            <td>${description}</td>
+            <td>${si.qty}</td>
+            <td>EA</td>
+            <td>${location}</td>
+            <td>${remarks}</td>
+          </tr>
+        ` : ''}
         <tr><td colspan='7' style='height:32px;'></td></tr>
         <tr><td colspan='7' style='height:32px;'></td></tr>
         <tr><td colspan='7' style='height:32px;'></td></tr>

@@ -430,6 +430,16 @@ window.printShippingLabel = async function(barcode) {
     const description = shipping.description || '-';
     const remarks = shipping.remarks || '-';
     const location = shipping.location_code || '-';
+    
+    // 파트별 수량 정보 파싱
+    let partQuantities = {};
+    if (shipping.part_quantities) {
+      try {
+        partQuantities = JSON.parse(shipping.part_quantities);
+      } catch (e) {
+        console.error('Error parsing part_quantities:', e);
+      }
+    }
 
     const printHtml = `
       <style>
@@ -477,15 +487,28 @@ window.printShippingLabel = async function(barcode) {
             <th>Location</th>
             <th>Remarks</th>
           </tr>
-          <tr>
-            <td>1</td>
-            <td>${model}</td>
-            <td>${description}</td>
-            <td>${shipping.qty}</td>
-            <td>EA</td>
-            <td>${location}</td>
-            <td>${remarks}</td>
-          </tr>
+          ${Object.entries(partQuantities).map(([partNo, qty], index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${partNo}</td>
+              <td>${description}</td>
+              <td>${qty}</td>
+              <td>EA</td>
+              <td>${location}</td>
+              <td>${remarks}</td>
+            </tr>
+          `).join('')}
+          ${Object.keys(partQuantities).length === 0 ? `
+            <tr>
+              <td>1</td>
+              <td>${model}</td>
+              <td>${description}</td>
+              <td>${shipping.qty}</td>
+              <td>EA</td>
+              <td>${location}</td>
+              <td>${remarks}</td>
+            </tr>
+          ` : ''}
         </table>
         <table class='bol-table bol-sign'>
           <tr>

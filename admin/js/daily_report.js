@@ -82,14 +82,36 @@ async function loadDailyReport(date) {
   // 출고: shipping_date 기준, status 조건 없이 모두
   const { data: shipping } = await supabase
     .from('shipping_instruction')
-    .select('container_no, location_code, part_no, qty, shipping_date')
+    .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
     .eq('shipping_date', date);
 
   console.log('Receiving Query:', date, receiving);
   console.log('Shipping Query:', date, shipping);
 
+  // part_quantities가 있는 경우 여러 파트를 개별 행으로 분리
+  const expandedShipping = [];
+  (shipping || []).forEach(ship => {
+    if (ship.part_quantities) {
+      try {
+        const partQuantities = JSON.parse(ship.part_quantities);
+        Object.entries(partQuantities).forEach(([partNo, qty]) => {
+          expandedShipping.push({
+            ...ship,
+            part_no: partNo,
+            qty: qty
+          });
+        });
+      } catch (e) {
+        console.error('Error parsing part_quantities:', e);
+        expandedShipping.push(ship);
+      }
+    } else {
+      expandedShipping.push(ship);
+    }
+  });
+
   lastReceiving = receiving || [];
-  lastShipping = shipping || [];
+  lastShipping = expandedShipping || [];
   renderDailyReportTable(date);
 }
 

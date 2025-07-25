@@ -577,15 +577,46 @@ async function loadPlans(applyFilter = false) {
   if (!initializeElements()) return;
 
   if (!applyFilter) {
-    planListBody.innerHTML = `
-      <tr>
-        <td colspan="12" class="text-center py-4 text-muted">
-          <i class="fas fa-search me-2"></i>
-          ${formatMessage('msg_click_search')}
-        </td>
-      </tr>
-    `;
-    return;
+    // 필터 없이도 최근 5개 데이터를 보여주기
+    try {
+      const { data: recentPlans, error } = await window.supabase
+        .from('receiving_plan')
+        .select(`
+          *,
+          receiving_items (*)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+
+      if (!recentPlans || recentPlans.length === 0) {
+        planListBody.innerHTML = `
+          <tr>
+            <td colspan="12" class="text-center py-4 text-muted">
+              <i class="fas fa-info-circle me-2"></i>
+              데이터가 없습니다. 테스트 데이터를 생성해보세요.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // 최근 데이터 표시
+      await displayPlans(recentPlans);
+      return;
+    } catch (error) {
+      console.error('최근 데이터 로드 실패:', error);
+      planListBody.innerHTML = `
+        <tr>
+          <td colspan="12" class="text-center py-4 text-muted">
+            <i class="fas fa-search me-2"></i>
+            ${formatMessage('msg_click_search')}
+          </td>
+        </tr>
+      `;
+      return;
+    }
   }
 
   try {
@@ -611,11 +642,7 @@ async function loadPlans(applyFilter = false) {
       return;
     }
 
-    // 1. receiving_log 전체 불러오기 (label_id, received_at 모두)
-    const { data: logs, error: logError } = await window.supabase.from('receiving_log').select('label_id, received_at');
-    if (logError) throw logError;
-    const logMap = new Map();
-    (logs || []).forEach(log => logMap.set(String(log.label_id), log));
+    // receiving_log는 displayPlans 함수에서 조회하므로 여기서는 제거
 
     // 2. plan, item 데이터 불러오기
     const { data: plans, error } = await window.supabase
@@ -652,42 +679,8 @@ async function loadPlans(applyFilter = false) {
       currentItems.set(plan.id, (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : []);
     }
 
-    // 데이터 표시 (tbody만 생성)
-    planListBody.innerHTML = plans.map(plan => {
-      const items = (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : [];
-      const partNos = items.map(i => i.part_no).join(', ');
-      const qtys = items.map(i => i.quantity).join(', ');
-      const locations = items.map(i => i.location_code).join(', ');
-      const receivingPlaces = items.map(i => i.receiving_place || '-').join(', ');
-      const receivedAts = items.map(i => logMap.has(String(i.label_id)) ? new Date(logMap.get(String(i.label_id)).received_at).toISOString().slice(0,10) : '').join(', ');
-      const allReceived = items.length > 0 && items.every(i => logMap.has(String(i.label_id)));
-      const status = allReceived ? '입고' : '대기';
-      let forceBtn = '';
-      const notReceivedItems = items.filter(i => !logMap.has(String(i.label_id)));
-      if (notReceivedItems.length > 0) {
-        forceBtn = `<button class="force-receive-btn text-green-600" data-plan-id="${plan.id}" data-label-ids="${notReceivedItems.map(i => i.label_id).join(',')}">입고</button>`;
-      }
-      return `
-        <tr>
-          <td class="px-2 py-2 border text-center"><input type="checkbox" name="planCheckBox" value="${plan.id}"></td>
-          <td class="px-2 py-2 border text-center">${plan.receive_date || ''}</td>
-          <td class="px-4 py-2 border">${plan.type || ''}</td>
-          <td class="px-4 py-2 border">${plan.container_no || ''}</td>
-          <td class="px-4 py-2 border">${locations}</td>
-          <td class="px-4 py-2 border">${receivingPlaces}</td>
-          <td class="px-4 py-2 border">${partNos}</td>
-          <td class="px-4 py-2 border">${qtys}</td>
-          <td class="px-4 py-2 border">${status}</td>
-          <td class="px-4 py-2 border">${receivedAts}</td>
-          <td class="px-2 py-2 border">
-            <button class="delete-btn text-red-600" data-id="${plan.id}">Delete</button>
-          </td>
-          <td class="px-2 py-2 border">
-            ${forceBtn}
-          </td>
-        </tr>
-      `;
-    }).join('');
+    // 데이터 표시 함수 호출
+    await displayPlans(plans);
 
     // 7. 이벤트 리스너 바인딩 (반드시 planListBody.innerHTML 이후 호출)
     bindEventListeners();
@@ -1060,7 +1053,13 @@ export async function initSection() {
     });
   }
 
-  // 8. 초기 데이터 로드
+  // 8. 테스트 데이터 버튼 추가
+  addTestDataButton();
+  
+  // 9. 데이터베이스 상태 확인 버튼 추가
+  addDatabaseStatusButton();
+  
+  // 10. 초기 데이터 로드
   console.log('Loading initial data...');
   await loadPlans();
   
@@ -1715,4 +1714,210 @@ if (addNewPlanBtn) {
 }
 // 폼이 이미 열려있는 경우도 대비해서 최초 1회 연결
 setTimeout(attachAutoLocationCheckboxListener, 500);
+
+// 테스트 데이터 생성 함수
+async function createTestData() {
+  try {
+    console.log('테스트 데이터 생성 시작...');
+    
+    // 1. 테스트 receiving_plan 생성
+    const { data: planData, error: planError } = await window.supabase
+      .from('receiving_plan')
+      .insert({
+        type: 'container',
+        container_no: 'TEST-001',
+        receive_date: new Date().toISOString().slice(0, 10),
+      })
+      .select('id')
+      .single();
+    
+    if (planError) {
+      console.error('Plan 생성 실패:', planError);
+      return;
+    }
+    
+    console.log('Plan 생성 성공:', planData);
+    
+    // 2. 테스트 receiving_items 생성
+    const testItems = [
+      {
+        plan_id: planData.id,
+        part_no: 'PART-A001',
+        quantity: 100,
+        location_code: 'A-01',
+        label_id: crypto.randomUUID(),
+        container_no: 'TEST-001',
+        receiving_place: 'Test Warehouse',
+      },
+      {
+        plan_id: planData.id,
+        part_no: 'PART-B002',
+        quantity: 50,
+        location_code: 'A-02',
+        label_id: crypto.randomUUID(),
+        container_no: 'TEST-001',
+        receiving_place: 'Test Warehouse',
+      }
+    ];
+    
+    const { data: itemsData, error: itemsError } = await window.supabase
+      .from('receiving_items')
+      .insert(testItems)
+      .select('*');
+    
+    if (itemsError) {
+      console.error('Items 생성 실패:', itemsError);
+      return;
+    }
+    
+    console.log('Items 생성 성공:', itemsData);
+    
+    // 3. 테스트 receiving_log 생성 (입고 완료)
+    const logData = testItems.map(item => ({
+      label_id: item.label_id,
+      received_at: new Date().toISOString(),
+      confirmed_by: 'admin',
+    }));
+    
+    const { data: logDataResult, error: logError } = await window.supabase
+      .from('receiving_log')
+      .insert(logData)
+      .select('*');
+    
+    if (logError) {
+      console.error('Log 생성 실패:', logError);
+      return;
+    }
+    
+    console.log('Log 생성 성공:', logDataResult);
+    console.log('테스트 데이터 생성 완료!');
+    
+    // 페이지 새로고침
+    window.location.reload();
+    
+  } catch (error) {
+    console.error('테스트 데이터 생성 중 오류:', error);
+  }
+}
+
+// 테스트 데이터 생성 버튼 추가
+function addTestDataButton() {
+  const container = document.querySelector('.container');
+  if (container) {
+    const testButton = document.createElement('button');
+    testButton.textContent = '테스트 데이터 생성';
+    testButton.className = 'bg-red-600 text-white px-4 py-2 rounded font-semibold mb-4';
+    testButton.onclick = createTestData;
+    container.insertBefore(testButton, container.firstChild);
+  }
+}
+
+// 데이터 표시 함수
+async function displayPlans(plans) {
+  // receiving_log 데이터 조회
+  const { data: logs, error: logError } = await window.supabase.from('receiving_log').select('label_id, received_at');
+  if (logError) throw logError;
+  const logMap = new Map();
+  (logs || []).forEach(log => logMap.set(String(log.label_id), log));
+
+  planListBody.innerHTML = plans.map(plan => {
+    const items = (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : [];
+    const partNos = items.map(i => i.part_no).join(', ');
+    const qtys = items.map(i => i.quantity).join(', ');
+    const locations = items.map(i => i.location_code).join(', ');
+    const receivingPlaces = items.map(i => i.receiving_place || '-').join(', ');
+    const receivedAts = items.map(i => logMap.has(String(i.label_id)) ? new Date(logMap.get(String(i.label_id)).received_at).toISOString().slice(0,10) : '').join(', ');
+    const allReceived = items.length > 0 && items.every(i => logMap.has(String(i.label_id)));
+    const status = allReceived ? '입고' : '대기';
+    let forceBtn = '';
+    const notReceivedItems = items.filter(i => !logMap.has(String(i.label_id)));
+    if (notReceivedItems.length > 0) {
+      forceBtn = `<button class="force-receive-btn text-green-600" data-plan-id="${plan.id}" data-label-ids="${notReceivedItems.map(i => i.label_id).join(',')}">입고</button>`;
+    }
+    return `
+      <tr>
+        <td class="px-2 py-2 border text-center"><input type="checkbox" name="planCheckBox" value="${plan.id}"></td>
+        <td class="px-2 py-2 border text-center">${plan.receive_date || ''}</td>
+        <td class="px-4 py-2 border">${plan.type || ''}</td>
+        <td class="px-4 py-2 border">${plan.container_no || ''}</td>
+        <td class="px-4 py-2 border">${locations}</td>
+        <td class="px-4 py-2 border">${receivingPlaces}</td>
+        <td class="px-4 py-2 border">${partNos}</td>
+        <td class="px-4 py-2 border">${qtys}</td>
+        <td class="px-4 py-2 border">${status}</td>
+        <td class="px-4 py-2 border">${receivedAts}</td>
+        <td class="px-2 py-2 border">
+          <button class="delete-btn text-red-600" data-id="${plan.id}">Delete</button>
+        </td>
+        <td class="px-2 py-2 border">
+          ${forceBtn}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 데이터베이스 상태 확인 함수
+async function checkDatabaseStatus() {
+  try {
+    console.log('=== 데이터베이스 상태 확인 ===');
+    
+    // 1. receiving_plan 테이블 확인
+    const { data: plans, error: planError } = await window.supabase
+      .from('receiving_plan')
+      .select('*')
+      .limit(5);
+    
+    if (planError) {
+      console.error('receiving_plan 조회 실패:', planError);
+    } else {
+      console.log('receiving_plan 데이터:', plans);
+    }
+    
+    // 2. receiving_items 테이블 확인
+    const { data: items, error: itemError } = await window.supabase
+      .from('receiving_items')
+      .select('*')
+      .limit(5);
+    
+    if (itemError) {
+      console.error('receiving_items 조회 실패:', itemError);
+    } else {
+      console.log('receiving_items 데이터:', items);
+    }
+    
+    // 3. receiving_log 테이블 확인
+    const { data: logs, error: logError } = await window.supabase
+      .from('receiving_log')
+      .select('*')
+      .limit(5);
+    
+    if (logError) {
+      console.error('receiving_log 조회 실패:', logError);
+    } else {
+      console.log('receiving_log 데이터:', logs);
+    }
+    
+    // 4. 테이블 스키마 확인 (가능한 경우)
+    console.log('=== 테이블 스키마 정보 ===');
+    console.log('receiving_plan 필드:', plans && plans.length > 0 ? Object.keys(plans[0]) : '데이터 없음');
+    console.log('receiving_items 필드:', items && items.length > 0 ? Object.keys(items[0]) : '데이터 없음');
+    console.log('receiving_log 필드:', logs && logs.length > 0 ? Object.keys(logs[0]) : '데이터 없음');
+    
+  } catch (error) {
+    console.error('데이터베이스 상태 확인 중 오류:', error);
+  }
+}
+
+// 데이터베이스 상태 확인 버튼 추가
+function addDatabaseStatusButton() {
+  const container = document.querySelector('.container');
+  if (container) {
+    const statusButton = document.createElement('button');
+    statusButton.textContent = 'DB 상태 확인';
+    statusButton.className = 'bg-yellow-600 text-white px-4 py-2 rounded font-semibold mb-4 ml-2';
+    statusButton.onclick = checkDatabaseStatus;
+    container.insertBefore(statusButton, container.firstChild.nextSibling);
+  }
+}
   

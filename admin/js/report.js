@@ -44,7 +44,7 @@ export async function loadReport() {
       // 2. 출고 데이터 조회 (shipping_instruction에서 출고일 추출)
       const { data: shipping, error: shipError } = await supabase
         .from('shipping_instruction')
-        .select('container_no, part_no, shipping_date, status');
+        .select('container_no, part_no, shipping_date, status, part_quantities');
       if (shipError) throw shipError;
 
       // 2-1. 출고 실물 단위 조회 (shipping_instruction_items의 shipped_at)
@@ -90,11 +90,26 @@ export async function loadReport() {
           status = 'In Stock';
           in_date = receivedMap.get(String(rec.label_id))?.slice(0, 10) || '-';
         }
-        // 출고 여부
-        const ships = shipping.filter(s =>
-          normalize(s.container_no) === normalize(rec.container_no) &&
-          normalize(s.part_no) === normalize(rec.part_no)
-        );
+        // 출고 여부 - part_quantities가 있는 경우 해당 파트가 포함되어 있는지 확인
+        const ships = shipping.filter(s => {
+          if (normalize(s.container_no) !== normalize(rec.container_no)) return false;
+          
+          // part_quantities가 있는 경우 (여러 파트)
+          if (s.part_quantities) {
+            try {
+              const partQuantities = JSON.parse(s.part_quantities);
+              return Object.keys(partQuantities).some(part => 
+                normalize(part) === normalize(rec.part_no)
+              );
+            } catch (e) {
+              console.error('Error parsing part_quantities:', e);
+              return false;
+            }
+          }
+          
+          // 기존 방식 (단일 파트)
+          return normalize(s.part_no) === normalize(rec.part_no);
+        });
         const ship = ships.find(s => s.status === 'shipped' && s.shipping_date);
         if (ship && receivedMap.has(String(rec.label_id))) {
           status = 'Shipped';
@@ -258,7 +273,7 @@ export async function loadReport() {
       if (recError) throw recError;
       const { data: shipping, error: shipError } = await supabase
         .from('shipping_instruction')
-        .select('container_no, part_no, shipping_date, status');
+        .select('container_no, part_no, shipping_date, status, part_quantities');
       if (shipError) throw shipError;
       const { data: shippedItems, error: shippedItemsError } = await supabase
         .from('shipping_instruction_items')
@@ -287,10 +302,26 @@ export async function loadReport() {
           status = 'In Stock';
           in_date = receivedMap.get(String(rec.label_id))?.slice(0, 10) || '-';
         }
-        const ships = shipping.filter(s =>
-          normalize(s.container_no) === normalize(rec.container_no) &&
-          normalize(s.part_no) === normalize(rec.part_no)
-        );
+        // 컨테이너와 파트 매칭 - part_quantities가 있는 경우 해당 파트가 포함되어 있는지 확인
+        const ships = shipping.filter(s => {
+          if (normalize(s.container_no) !== normalize(rec.container_no)) return false;
+          
+          // part_quantities가 있는 경우 (여러 파트)
+          if (s.part_quantities) {
+            try {
+              const partQuantities = JSON.parse(s.part_quantities);
+              return Object.keys(partQuantities).some(part => 
+                normalize(part) === normalize(rec.part_no)
+              );
+            } catch (e) {
+              console.error('Error parsing part_quantities:', e);
+              return false;
+            }
+          }
+          
+          // 기존 방식 (단일 파트)
+          return normalize(s.part_no) === normalize(rec.part_no);
+        });
         const ship = ships.find(s => s.status === 'shipped' && s.shipping_date);
         if (ship && receivedMap.has(String(rec.label_id))) {
           status = 'Shipped';

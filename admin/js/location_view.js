@@ -143,6 +143,7 @@ const layout = [
   { code: 'A-22', x: 2, y: 505, width: 60, height: 20 },
   { code: 'A-23', x: 2, y: 529, width: 60, height: 20 },
   { code: 'A-24', x: 2, y: 553, width: 60, height: 20 },
+  { code: 'A-25', x: 2, y: 577, width: 60, height: 20 },
   // B열 (A열 오른쪽)
   { code: 'B-01', x: 115, y: 1, width: 60, height: 20 },
   { code: 'B-02', x: 115, y: 25, width: 60, height: 20 },
@@ -183,6 +184,7 @@ const layout = [
   { code: 'C-14', x: 230, y: 529, width: 60, height: 20 },
   { code: 'C-15', x: 230, y: 553, width: 60, height: 20 },
   // D열 (중앙)
+  { code: 'D-00', x: 292, y: 195, width: 60, height: 20 },
   { code: 'D-01', x: 292, y: 217, width: 60, height: 20 },
   { code: 'D-02', x: 292, y: 241, width: 60, height: 20 },
   { code: 'D-03', x: 292, y: 265, width: 60, height: 20 },
@@ -199,6 +201,7 @@ const layout = [
   { code: 'D-14', x: 292, y: 529, width: 60, height: 20 },
   { code: 'D-15', x: 292, y: 553, width: 60, height: 20 },
   // E열 (중앙 오른쪽)
+  { code: 'E-00', x: 450, y: 195, width: 60, height: 20 },
   { code: 'E-01', x: 450, y: 217, width: 60, height: 20 },
   { code: 'E-02', x: 450, y: 241, width: 60, height: 20 },
   { code: 'E-03', x: 450, y: 265, width: 60, height: 20 },
@@ -209,7 +212,11 @@ const layout = [
   { code: 'E-08', x: 450, y: 385, width: 60, height: 20 },
   { code: 'E-09', x: 450, y: 409, width: 60, height: 20 },
   { code: 'E-10', x: 450, y: 433, width: 60, height: 20 },
+  { code: 'E-11', x: 450, y: 457, width: 60, height: 20 },
+  { code: 'E-12', x: 450, y: 481, width: 60, height: 20 },
+
   // F열 (중앙 맨 오른쪽)
+  { code: 'F-00', x: 512, y: 195, width: 60, height: 20 },
   { code: 'F-01', x: 512, y: 217, width: 60, height: 20 },
   { code: 'F-02', x: 512, y: 241, width: 60, height: 20 },
   { code: 'F-03', x: 512, y: 265, width: 60, height: 20 },
@@ -220,12 +227,18 @@ const layout = [
   { code: 'F-08', x: 512, y: 385, width: 60, height: 20 },
   { code: 'F-09', x: 512, y: 409, width: 60, height: 20 },
   { code: 'F-10', x: 512, y: 433, width: 60, height: 20 },
+  { code: 'F-11', x: 512, y: 457, width: 60, height: 20 },
+  { code: 'F-12', x: 512, y: 481, width: 60, height: 20 },
   // G열 (노란 영역 아래)
-  { code: 'G-01', x: 450, y: 457, width: 120, height: 20 },
-  { code: 'G-02', x: 450, y: 481, width: 120, height: 20 },
+
   { code: 'G-03', x: 450, y: 505, width: 120, height: 20 },
   { code: 'G-04', x: 450, y: 529, width: 120, height: 20 },
   { code: 'G-05', x: 450, y: 553, width: 120, height: 20 },
+
+    // H열 (노란 영역 아래)
+  { code: 'H-09', x: 600, y: 409, width: 60, height: 20 },
+  { code: 'H-10', x: 600, y: 433, width: 60, height: 20 },
+  { code: 'H-11', x: 600, y: 457, width: 60, height: 20 },
 ];
 
 // 전역 상태 관리
@@ -246,9 +259,9 @@ function initializeSVG() {
   // 기본 레이아웃 요소 추가
   const baseElements = `
     <!-- 왼쪽 세로 구역 -->
-    <rect x="1" y="1" width="175" height="575" fill="#d3d3d3" stroke="#000" />
+    <rect x="1" y="1" width="175" height="600" fill="#d3d3d3" stroke="#000" />
     <!-- 하단 가로 구역 -->
-    <rect x="177.5" y="151" width="480" height="425" fill="#d3d3d3" stroke="#000" />
+    <rect x="177.5" y="151" width="600" height="450" fill="#d3d3d3" stroke="#000" />
     <!-- LOADING DOCK -->
     <rect x="250" y="120" width="300" height="25" fill="#176687" stroke="#000" />
     <text x="400" y="135" font-size="15" fill="#fff" text-anchor="middle" alignment-baseline="middle">LOADING DOCK</text>
@@ -292,7 +305,9 @@ async function loadOccupied() {
     // 데이터 초기화
     currentOccupied = {};
     
-    // 데이터 매핑
+    // 데이터 매핑 - 같은 위치의 여러 파트를 처리
+    const locationGroups = {};
+    
     for (const item of items) {
       if (!item.location_code) continue;
       if (shippedContainerSet.has(item.container_no)) {
@@ -301,18 +316,72 @@ async function loadOccupied() {
       if (shippedLabelSet.has(String(item.label_id))) {
         continue;
       }
+      
       let code = item.location_code;
       if (/^[A-Z][0-9]{1,2}$/.test(code)) {
         code = code[0] + '-' + code.slice(1).padStart(2, '0');
       }
+      
+      // 같은 위치의 항목들을 그룹화
+      if (!locationGroups[code]) {
+        locationGroups[code] = [];
+      }
+      locationGroups[code].push(item);
+    }
+    
+    // 각 위치별로 데이터 정리
+    for (const [code, groupItems] of Object.entries(locationGroups)) {
+      // 파트별 수량 계산
+      const partQuantities = {};
+      let totalQty = 0;
+      let containerIds = new Set();
+      let receivingDates = new Set();
+      let labelIds = [];
+      let receivedCount = 0;
+      
+      groupItems.forEach(item => {
+        const partNo = item.part_no ? item.part_no.toString().trim() : '';
+        const qty = parseInt(item.quantity) || 0;
+        
+        if (partNo && qty > 0) {
+          partQuantities[partNo] = (partQuantities[partNo] || 0) + qty;
+          totalQty += qty;
+        }
+        
+        if (item.receiving_plan?.container_no) {
+          containerIds.add(item.receiving_plan.container_no);
+        }
+        if (item.receiving_plan?.receive_date) {
+          receivingDates.add(item.receiving_plan.receive_date);
+        }
+        if (item.label_id) {
+          labelIds.push(item.label_id);
+          if (receivedSet.has(item.label_id)) {
+            receivedCount++;
+          }
+        }
+      });
+      
+      // 가장 많은 수량을 가진 파트를 대표 파트로 선택
+      let mainPartNo = '';
+      let maxQty = 0;
+      for (const [partNo, qty] of Object.entries(partQuantities)) {
+        if (qty > maxQty) {
+          maxQty = qty;
+          mainPartNo = partNo;
+        }
+      }
+      
       currentOccupied[code] = {
-        part_no: item.part_no,
-        qty: item.quantity,
-        receiving_date: item.receiving_plan?.receive_date,
-        container_id: item.receiving_plan?.container_no,
-        received: receivedSet.has(item.label_id),
-        label_id: item.label_id,
-        raw_location_code: item.location_code
+        part_no: mainPartNo,
+        qty: totalQty,
+        receiving_date: Array.from(receivingDates)[0], // 첫 번째 날짜 사용
+        container_id: Array.from(containerIds)[0], // 첫 번째 컨테이너 사용
+        received: receivedCount > 0,
+        label_id: labelIds[0], // 첫 번째 label_id 사용
+        raw_location_code: groupItems[0].location_code,
+        all_parts: partQuantities, // 모든 파트 정보 저장
+        total_items: groupItems.length
       };
     }
 
@@ -560,11 +629,21 @@ function showLocationModal(loc, info) {
 
   sidePanelTitle.textContent = `Location: ${loc}`;
   if (info) {
+    let partsInfo = '';
+    if (info.all_parts && Object.keys(info.all_parts).length > 1) {
+      partsInfo = '<div class="mb-2"><b>All Parts:</b><br>' + 
+        Object.entries(info.all_parts).map(([part, qty]) => 
+          `&nbsp;&nbsp;• ${part}: ${qty}개`
+        ).join('<br>') + '</div>';
+    }
+    
     sidePanelBody.innerHTML = `
-      <div class='mb-2'><b>Part No:</b> ${info.part_no}</div>
-      <div><b>Qty:</b> ${info.qty}</div>
+      <div class='mb-2'><b>Main Part No:</b> ${info.part_no}</div>
+      <div><b>Total Qty:</b> ${info.qty}</div>
       <div><b>입고일:</b> ${info.receiving_date || '-'}</div>
       <div><b>컨테이너/트레일러:</b> ${info.container_id || '-'}</div>
+      <div><b>Total Items:</b> ${info.total_items || 1}개</div>
+      ${partsInfo}
     `;
     shippingOrderArea.innerHTML = `<div class="mt-4 text-sm text-gray-500">출하지시서 상태 확인 중...</div>`;
     // 출하지시서 존재 여부 확인 - 컨테이너 단위로 확인
@@ -604,26 +683,85 @@ function showLocationModal(loc, info) {
           // 1. 해당 컨테이너의 모든 실물(label_id) 조회 - part_no 포함
           const { data: items, error: itemsError } = await supabase
             .from('receiving_items')
-            .select('label_id, quantity, part_no')
+            .select('label_id, quantity, part_no, container_no')
             .eq('container_no', info.container_id);
 
           if (itemsError || !items || items.length === 0) {
             document.getElementById('shippingResultMsg').textContent = '이 컨테이너에 실물(label_id)이 없습니다.';
             return;
           }
+          
+          console.log('=== 출하지시서 생성 디버깅 ===');
+          console.log('Container ID:', info.container_id);
+          console.log('Location Info:', info);
+          console.log('Raw items from DB:', items);
+          
+          // 유효한 데이터가 있는지 확인
+          const validItems = items.filter(item => 
+            item.label_id && 
+            item.part_no && 
+            item.quantity !== null && 
+            item.quantity !== undefined && 
+            item.quantity !== '' &&
+            !isNaN(parseInt(item.quantity)) &&
+            parseInt(item.quantity) > 0
+          );
+          
+          if (validItems.length === 0) {
+            document.getElementById('shippingResultMsg').textContent = '이 컨테이너에 유효한 파트 정보가 없습니다.';
+            return;
+          }
+          
+          console.log(`Found ${validItems.length} valid items out of ${items.length} total items`);
 
-          // 2. 파트별 수량 계산
+          // 2. 파트별 수량 계산 (데이터 검증 및 정규화)
           const partQuantities = {};
-          items.forEach(item => {
-            const partNo = item.part_no;
-            if (partNo) {
-              partQuantities[partNo] = (partQuantities[partNo] || 0) + (item.quantity || 0);
+          console.log('Valid items for processing:', validItems); // 디버깅 로그
+          
+          validItems.forEach(item => {
+            // 파트 번호 정규화 (공백 제거, 대소문자 통일)
+            const partNo = item.part_no ? item.part_no.toString().trim().toUpperCase() : null;
+            
+            // 수량 정규화 (숫자로 변환, null/undefined/빈 문자열 처리)
+            let quantity = 0;
+            if (item.quantity !== null && item.quantity !== undefined && item.quantity !== '') {
+              const parsedQty = parseInt(item.quantity);
+              if (!isNaN(parsedQty) && parsedQty > 0) {
+                quantity = parsedQty;
+              }
+            }
+            
+            console.log(`Processing item: label_id="${item.label_id}", original_part_no="${item.part_no}", normalized_part_no="${partNo}", quantity=${quantity}, original_quantity="${item.quantity}"`); // 디버깅 로그
+            
+            if (partNo && quantity > 0) {
+              partQuantities[partNo] = (partQuantities[partNo] || 0) + quantity;
+            } else {
+              console.warn(`Skipping invalid item: part_no="${partNo}", quantity=${quantity}`);
             }
           });
+          
+          console.log('Calculated partQuantities:', partQuantities); // 디버깅 로그
+          
+          // Location Info의 part_no와 실제 DB의 파트 이름 비교
+          const locationPartNo = info.part_no ? info.part_no.toString().trim().toUpperCase() : null;
+          console.log('Location Info part_no:', locationPartNo);
+          console.log('DB part numbers:', Object.keys(partQuantities));
+          
+          // 파트 이름이 다른 경우 경고
+          if (locationPartNo && !Object.keys(partQuantities).includes(locationPartNo)) {
+            console.warn(`Part number mismatch! Location shows "${locationPartNo}" but DB has:`, Object.keys(partQuantities));
+          }
+          
+          // 파트별 수량이 비어있는 경우 경고
+          if (Object.keys(partQuantities).length === 0) {
+            console.error('No valid part quantities found!');
+            document.getElementById('shippingResultMsg').textContent = '유효한 파트 정보가 없습니다.';
+            return;
+          }
 
           // 3. 출하증 생성 - 컨테이너 단위로 생성
-          // 컨테이너의 총 수량 계산
-          const totalQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+          // 컨테이너의 총 수량 계산 (정규화된 파트별 수량 합계 사용)
+          const totalQty = Object.values(partQuantities).reduce((sum, qty) => sum + qty, 0);
           
           // 파트별 수량 정보를 JSON으로 저장
           const partQuantitiesJson = JSON.stringify(partQuantities);
@@ -644,13 +782,24 @@ function showLocationModal(loc, info) {
             return;
           }
 
-          // 3. shipping_instruction_items에 여러 개 insert
+          // 3. shipping_instruction_items에 여러 개 insert (정규화된 수량 사용)
           const shippingInstructionId = data.id;
-          const itemsToInsert = items.map(item => ({
-            shipping_instruction_id: shippingInstructionId,
-            label_id: item.label_id,
-            qty: item.quantity
-          }));
+          const itemsToInsert = validItems.map(item => {
+            // 수량 정규화 (위와 동일한 로직)
+            let quantity = 0;
+            if (item.quantity !== null && item.quantity !== undefined && item.quantity !== '') {
+              const parsedQty = parseInt(item.quantity);
+              if (!isNaN(parsedQty) && parsedQty > 0) {
+                quantity = parsedQty;
+              }
+            }
+            
+            return {
+              shipping_instruction_id: shippingInstructionId,
+              label_id: item.label_id,
+              qty: quantity
+            };
+          });
           const { error: itemError } = await supabase.from('shipping_instruction_items').insert(itemsToInsert);
           if (itemError) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성(실물 매핑) 실패: ' + itemError.message;

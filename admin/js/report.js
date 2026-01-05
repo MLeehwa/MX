@@ -207,6 +207,19 @@ export async function loadReport() {
     // normalize 함수 추가
     const normalize = v => (v === undefined || v === null) ? '' : String(v).trim().toLowerCase();
 
+    // 0. flagged_containers 테이블에서 문제 컨테이너 번호 조회
+    const { data: flaggedContainers, error: flaggedError } = await supabase
+      .from('flagged_containers')
+      .select('container_no');
+    const flaggedContainerSet = new Set();
+    if (!flaggedError && flaggedContainers) {
+      flaggedContainers.forEach(fc => {
+        if (fc.container_no) {
+          flaggedContainerSet.add(normalize(fc.container_no));
+        }
+      });
+    }
+
     // 1. receiving_log 데이터 조회 (label_id, received_at)
     const { data: logs, error: logError } = await supabase
       .from('receiving_log')
@@ -372,7 +385,8 @@ export async function loadReport() {
       });
       // 데이터 행에도 모든 셀에 테두리 추가
       const dataRow = ws1.getRow(ws1.rowCount);
-      const isTargetContainer = row.container_no === 'TRHU7878105';
+      // flagged_containers에 등록된 컨테이너 번호인지 확인
+      const isFlaggedContainer = row.container_no && flaggedContainerSet.has(normalize(row.container_no));
       dataRow.eachCell((cell, colNumber) => {
         cell.border = {
           top: { style: 'thin', color: { argb: 'FF000000' } },
@@ -387,8 +401,8 @@ export async function loadReport() {
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
         }
       });
-      // Container No가 TRHU7878105인 경우 빨간색 음영 적용
-      if (isTargetContainer) {
+      // flagged_containers에 등록된 컨테이너인 경우 빨간색 음영 적용
+      if (isFlaggedContainer) {
         dataRow.eachCell((cell) => {
           cell.fill = {
             type: 'pattern',

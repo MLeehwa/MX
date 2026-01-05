@@ -207,12 +207,13 @@ export async function loadReport() {
     // normalize 함수 추가
     const normalize = v => (v === undefined || v === null) ? '' : String(v).trim().toLowerCase();
 
-    // 0. flagged_containers 테이블에서 문제 컨테이너 번호 및 사유 조회
+    // 0. flagged_containers 테이블에서 문제 컨테이너 번호, 사유, 색상 조회
     const { data: flaggedContainers, error: flaggedError } = await supabase
       .from('flagged_containers')
-      .select('container_no, reason');
+      .select('container_no, reason, highlight_color');
     const flaggedContainerSet = new Set();
     const flaggedContainerReasonMap = new Map();
+    const flaggedContainerColorMap = new Map();
     if (!flaggedError && flaggedContainers) {
       flaggedContainers.forEach(fc => {
         if (fc.container_no) {
@@ -221,6 +222,9 @@ export async function loadReport() {
           if (fc.reason) {
             flaggedContainerReasonMap.set(normalizedNo, fc.reason);
           }
+          // 색상 저장 (기본값: 빨간색)
+          const color = fc.highlight_color || '#FF0000';
+          flaggedContainerColorMap.set(normalizedNo, color);
         }
       });
     }
@@ -415,13 +419,21 @@ export async function loadReport() {
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
         }
       });
-      // flagged_containers에 등록된 컨테이너인 경우 빨간색 음영 적용
+      // flagged_containers에 등록된 컨테이너인 경우 선택된 색상으로 음영 적용
       if (isFlaggedContainer) {
+        // 색상 가져오기 (기본값: 빨간색)
+        const highlightColor = flaggedContainerColorMap.has(normalizedContainerNo) 
+          ? flaggedContainerColorMap.get(normalizedContainerNo) 
+          : '#FF0000';
+        
+        // #RRGGBB 형식을 ARGB 형식으로 변환 (FF + RRGGBB)
+        const argbColor = 'FF' + highlightColor.replace('#', '');
+        
         dataRow.eachCell((cell) => {
           cell.fill = {
             type: 'pattern',
             pattern: 'solid',
-            fgColor: { argb: 'FFFF0000' } // 빨간색
+            fgColor: { argb: argbColor }
           };
         });
       } else if (idx % 2 === 1) {

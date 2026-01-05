@@ -362,7 +362,7 @@ export async function loadReport() {
       .filter(row => row.in_date !== '-');
     }
 
-    // 데이터 행 추가 (REMARKS 컬럼 제거)
+    // 데이터 행 추가 (REMARK 컬럼 포함)
     exportRows.sort((a, b) => {
       if (a.in_date === b.in_date) return 0;
       return a.in_date > b.in_date ? 1 : -1;

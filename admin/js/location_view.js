@@ -167,17 +167,57 @@ function initializeSVG() {
     svg.removeChild(svg.firstChild);
   }
 
-  // 기본 레이아웃 요소 추가
-  const baseElements = `
-    <!-- 왼쪽 세로 구역 -->
-    <rect x="1" y="1" width="175" height="600" fill="#d3d3d3" stroke="#000" />
-    <!-- 하단 가로 구역 -->
-    <rect x="177.5" y="151" width="600" height="450" fill="#d3d3d3" stroke="#000" />
-    <!-- LOADING DOCK -->
-    <rect x="250" y="120" width="300" height="25" fill="#176687" stroke="#000" />
-    <text x="400" y="135" font-size="15" fill="#fff" text-anchor="middle" alignment-baseline="middle">LOADING DOCK</text>
-  `;
-  svg.insertAdjacentHTML('beforeend', baseElements);
+  // 배경 요소 로드 및 렌더링 (localStorage에서, 없으면 현재 HTML의 하드코딩된 값 사용)
+  let backgroundElements = [];
+  try {
+    const saved = localStorage.getItem('wp1_background_elements');
+    if (saved) {
+      backgroundElements = JSON.parse(saved);
+    } else {
+      // localStorage에 없으면 현재 HTML에 하드코딩된 기본값 사용
+      // location_view.html의 기본값과 동일하게 설정
+      backgroundElements = [
+        { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+        { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+        { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+        { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+      ];
+    }
+  } catch (error) {
+    console.error('배경 요소 로드 실패:', error);
+    // 에러 발생 시 기본값 사용
+    backgroundElements = [
+      { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+      { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+      { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+      { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+    ];
+  }
+  
+  // 배경 요소 렌더링
+  backgroundElements.forEach(bg => {
+    if (bg.type === 'rect') {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', bg.x);
+      rect.setAttribute('y', bg.y);
+      rect.setAttribute('width', bg.width);
+      rect.setAttribute('height', bg.height);
+      rect.setAttribute('fill', bg.fill || '#d3d3d3');
+      rect.setAttribute('stroke', bg.stroke || '#000');
+      rect.setAttribute('stroke-width', bg.strokeWidth || 1);
+      svg.appendChild(rect);
+    } else if (bg.type === 'text') {
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', bg.x);
+      text.setAttribute('y', bg.y);
+      text.setAttribute('font-size', bg.fontSize || 15);
+      text.setAttribute('fill', bg.fill || '#000');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('alignment-baseline', 'middle');
+      text.textContent = bg.text || bg.label || '';
+      svg.appendChild(text);
+    }
+  });
   currentSVG = svg;
   return svg;
 }

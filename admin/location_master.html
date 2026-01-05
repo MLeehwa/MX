@@ -7,10 +7,23 @@
   <script src="config/config.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
 </head>
-<body class="p-8">
-  <h1 class="text-2xl font-bold mb-6">장소(Location) 마스터 관리</h1>
-  <div id="locationMasterApp">
-    <div class="text-center py-8 text-gray-500">로딩 중...</div>
+<body class="p-8 bg-gray-100">
+  <div class="max-w-7xl mx-auto bg-white shadow-xl rounded-xl p-6">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">장소(Location) 마스터 관리</h1>
+      <div class="flex gap-2">
+        <a href="location_editor.html" target="_blank" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
+          🗺️ 시각적 편집기 열기
+        </a>
+      </div>
+    </div>
+    <p class="text-gray-600 mb-4">
+      💡 <strong>팁:</strong> 좌표를 시각적으로 편집하려면 "시각적 편집기 열기" 버튼을 클릭하세요. 
+      두 페이지는 같은 데이터베이스를 사용하므로 변경사항이 자동으로 반영됩니다.
+    </p>
+    <div id="locationMasterApp">
+      <div class="text-center py-8 text-gray-500">로딩 중...</div>
+    </div>
   </div>
   <script src="js/location_master.js"></script>
 </body>

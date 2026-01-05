@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>시각적 위치 편집기</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="config/config.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <style>
+    .editor-container {
+      display: flex;
+      height: calc(100vh - 100px);
+      gap: 16px;
+    }
+    .toolbar {
+      width: 280px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .canvas-container {
+      flex: 1;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      overflow: auto;
+      position: relative;
+    }
+    .canvas {
+      background: white;
+      border: 2px solid #333;
+      position: relative;
+      min-width: 1000px;
+      min-height: 800px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .location-box {
+      position: absolute;
+      border: 2px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+      cursor: move;
+      user-select: none;
+      z-index: 10; /* 배경 요소보다 위에 표시 */
+    }
+    /* 상태별 색상 */
+    .location-box.status-available {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.15);
+    }
+    .location-box.status-occupied {
+      border-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.15);
+    }
+    .location-box.status-maintenance {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.15);
+    }
+    .location-box.status-disabled {
+      border-color: #6b7280;
+      background: rgba(107, 114, 128, 0.2);
+    }
+    .location-box.selected {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.3);
+      z-index: 11; /* 선택된 위치 박스는 더 위에 */
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5);
+    }
+    .background-element {
+      position: absolute;
+      border: 2px dashed #9333ea;
+      cursor: move;
+      user-select: none;
+      z-index: 1; /* 위치 편집 모드에서는 위치 박스보다 뒤에 표시 */
+    }
+    .background-element.selected {
+      border-color: #ef4444;
+      border-style: solid;
+      border-width: 3px;
+      z-index: 2; /* 선택된 배경 요소도 위치 편집 모드에서는 뒤에 */
+    }
+    /* 위치 편집 모드일 때 배경 요소 클릭 비활성화 */
+    body:not(.background-mode) .background-element {
+      pointer-events: none;
+    }
+    /* 배경 편집 모드일 때 배경 요소가 위에 표시되고 클릭 가능 */
+    body.background-mode .background-element {
+      pointer-events: auto;
+      z-index: 20; /* 배경 편집 모드에서는 위치 박스보다 위에 */
+    }
+    body.background-mode .background-element.selected {
+      z-index: 21; /* 선택된 배경 요소는 더 위에 */
+    }
+    /* 배경 편집 모드일 때 위치 박스는 뒤에 */
+    body.background-mode .location-box {
+      pointer-events: none;
+      z-index: 1;
+    }
+    .background-element.rect-element {
+      background: rgba(211, 211, 211, 0.5);
+    }
+    .background-element.text-element {
+      background: transparent;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .background-element.text-element.selected {
+      border: 2px dashed #ef4444;
+    }
+    .draw-preview {
+      position: absolute;
+      border: 2px dashed #9333ea;
+      background: rgba(147, 51, 234, 0.1);
+      pointer-events: none;
+      z-index: 200;
+    }
+    .selection-box {
+      position: absolute;
+      border: 2px dashed #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+      pointer-events: none;
+      z-index: 150;
+    }
+    .location-box.selection-highlight {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.15);
+    }
+    .canvas.drawing {
+      cursor: crosshair;
+    }
+    .canvas.drawing .location-box,
+    .canvas.drawing .background-element {
+      pointer-events: none;
+    }
+    .location-box .resize-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #3b82f6;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: nwse-resize;
+      right: -6px;
+      bottom: -6px;
+      z-index: 100;
+      display: none; /* 기본적으로 숨김 */
+    }
+    .location-box.selected .resize-handle {
+      display: block; /* 선택된 경우에만 표시 */
+      background: #ef4444;
+    }
+    .background-element .resize-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #9333ea;
+      border: 2px solid white;
+      border-radius: 50%;
+      cursor: nwse-resize;
+      right: -6px;
+      bottom: -6px;
+      z-index: 100;
+      display: none; /* 기본적으로 숨김 */
+    }
+    .background-element.selected .resize-handle {
+      display: block; /* 선택된 경우에만 표시 */
+      background: #ef4444;
+    }
+    .location-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: bold;
+      font-size: 10px;
+      pointer-events: none;
+      color: #1f2937;
+    }
+    .grid-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(to right, #e5e7eb 1px, transparent 1px),
+        linear-gradient(to bottom, #e5e7eb 1px, transparent 1px);
+      background-size: 20px 20px;
+      pointer-events: none;
+      opacity: 0.3;
+    }
+    .bounding-box {
+      position: absolute;
+      border: 2px dashed #3b82f6;
+      background: rgba(59, 130, 246, 0.05);
+      pointer-events: none;
+      z-index: 12;
+    }
+    .alignment-guide {
+      position: absolute;
+      background: #3b82f6;
+      pointer-events: none;
+      z-index: 13;
+      opacity: 0.6;
+    }
+    .alignment-guide.horizontal {
+      height: 1px;
+      width: 100%;
+    }
+    .alignment-guide.vertical {
+      width: 1px;
+      height: 100%;
+    }
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      gap: 4px;
+      z-index: 1000;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .minimap {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 200px;
+      height: 150px;
+      background: white;
+      border: 2px solid #333;
+      border-radius: 4px;
+      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    .minimap-viewport {
+      position: absolute;
+      border: 2px solid #3b82f6;
+      background: rgba(59, 130, 246, 0.2);
+      pointer-events: none;
+      z-index: 1001;
+    }
+    .search-box {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 1000;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      min-width: 250px;
+    }
+    .context-menu {
+      position: absolute;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      z-index: 2000;
+      min-width: 150px;
+      display: none;
+    }
+    .context-menu-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .context-menu-item:hover {
+      background: #f3f4f6;
+    }
+    .context-menu-divider {
+      height: 1px;
+      background: #e5e7eb;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-[1800px] mx-auto">
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-4">
+      <div class="flex justify-between items-center mb-2">
+        <div>
+          <h1 class="text-3xl font-bold mb-2">🗺️ 시각적 위치 편집기</h1>
+          <p class="text-gray-600">마우스로 위치를 드래그하여 배치하고, 크기를 조절할 수 있습니다.</p>
+        </div>
+        <div class="flex gap-2">
+          <a href="location_master.html" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+            ⚙️ 장소 마스터 관리
+          </a>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="editor-container">
+      <!-- 왼쪽 툴바 -->
+      <div class="toolbar">
+        <h2 class="text-xl font-bold mb-4">도구</h2>
+        
+        <!-- 모드 전환 -->
+        <div class="mb-6">
+          <h3 class="font-semibold mb-2">편집 모드</h3>
+          <div class="flex gap-2">
+            <button id="modeLocation" class="flex-1 bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 font-semibold">
+              위치 편집
+            </button>
+            <button id="modeBackground" class="flex-1 bg-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-400">
+              배경 편집
+            </button>
+          </div>
+        </div>
+
+        <!-- 새 위치 추가 -->
+        <div id="locationMode" class="mb-6">
+          <h3 class="font-semibold mb-2">새 위치 추가</h3>
+          <input type="text" id="newLocationCode" placeholder="위치 코드 (예: A-01)" 
+                 class="w-full border rounded px-3 py-2 mb-2">
+          <button id="addLocationBtn" class="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 mb-2">
+            위치 추가
+          </button>
+          <div class="border-t pt-2 mt-2">
+            <h4 class="text-sm font-semibold mb-2">여러 줄 일괄 생성</h4>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <input type="number" id="gridCols" placeholder="열 수" min="1" max="20" value="3"
+                     class="border rounded px-2 py-1 text-sm">
+              <input type="number" id="gridRows" placeholder="행 수" min="1" max="50" value="5"
+                     class="border rounded px-2 py-1 text-sm">
+            </div>
+            <input type="text" id="gridPrefix" placeholder="접두사 (예: A)" 
+                   class="w-full border rounded px-2 py-1 mb-2 text-sm">
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <input type="number" id="gridSpacingX" placeholder="가로 간격" min="0" value="80"
+                     class="border rounded px-2 py-1 text-sm">
+              <input type="number" id="gridSpacingY" placeholder="세로 간격" min="0" value="30"
+                     class="border rounded px-2 py-1 text-sm">
+            </div>
+            <input type="number" id="gridStartX" placeholder="시작 X" value="100"
+                   class="w-full border rounded px-2 py-1 mb-2 text-sm">
+            <input type="number" id="gridStartY" placeholder="시작 Y" value="100"
+                   class="w-full border rounded px-2 py-1 mb-2 text-sm">
+            <button id="createGridBtn" class="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 text-sm">
+              📦 그리드 생성
+            </button>
+          </div>
+        </div>
+
+        <!-- 새 배경 요소 추가 -->
+        <div id="backgroundMode" class="mb-6 hidden">
+          <h3 class="font-semibold mb-2">배경 요소 추가</h3>
+          <div class="mb-3">
+            <label class="block text-sm font-semibold mb-1">추가 방법</label>
+            <div class="flex gap-2 mb-2">
+              <button id="drawModeBtn" class="flex-1 bg-purple-600 text-white px-3 py-2 rounded hover:bg-purple-700 font-semibold">
+                ✏️ 그리기 모드
+              </button>
+              <button id="addModeBtn" class="flex-1 bg-gray-300 text-gray-800 px-3 py-2 rounded hover:bg-gray-400">
+                ➕ 직접 추가
+              </button>
+            </div>
+          </div>
+          
+          <!-- 그리기 모드 안내 -->
+          <div id="drawModeInfo" class="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-sm text-purple-800">
+            캔버스에서 마우스를 드래그하여 사각형을 그리세요!
+          </div>
+          
+          <!-- 직접 추가 모드 -->
+          <div id="addModePanel" class="hidden">
+            <select id="backgroundType" class="w-full border rounded px-3 py-2 mb-2">
+              <option value="rect">사각형 구역</option>
+              <option value="text">텍스트 라벨</option>
+            </select>
+            <input type="text" id="backgroundLabel" placeholder="라벨/이름 (선택사항)" 
+                   class="w-full border rounded px-3 py-2 mb-2">
+            <div id="textOptions" class="hidden mb-2">
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <input type="number" id="textX" placeholder="X 위치" value="100"
+                       class="border rounded px-2 py-1 text-sm">
+                <input type="number" id="textY" placeholder="Y 위치" value="100"
+                       class="border rounded px-2 py-1 text-sm">
+              </div>
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <input type="number" id="textFontSize" placeholder="글자 크기" value="14" min="8" max="72"
+                       class="border rounded px-2 py-1 text-sm">
+                <input type="color" id="textColor" value="#000000"
+                       class="border rounded px-2 py-1 h-8 text-sm">
+              </div>
+            </div>
+            <button id="addBackgroundBtn" class="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">
+              배경 요소 추가
+            </button>
+          </div>
+        </div>
+
+        <!-- 일괄 편집 도구 (위치 모드) -->
+        <div id="locationBatchTools" class="mb-6 hidden">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="font-semibold">일괄 편집 (선택: <span id="selectedCount">0</span>개)</h3>
+            <button id="clearSelectionBtn" class="bg-gray-400 text-white px-2 py-1 rounded text-xs hover:bg-gray-500">
+              ✕ 해제
+            </button>
+          </div>
+          <div class="bg-yellow-50 p-3 rounded border border-yellow-200">
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <button id="alignLeftBtn" class="bg-blue-500 text-white px-2 py-1 rounded text-sm hover:bg-blue-600">
+                ⬅️ 왼쪽
+              </button>
+              <button id="alignRightBtn" class="bg-blue-500 text-white px-2 py-1 rounded text-sm hover:bg-blue-600">
+                ➡️ 오른쪽
+              </button>
+              <button id="alignTopBtn" class="bg-blue-500 text-white px-2 py-1 rounded text-sm hover:bg-blue-600">
+                ⬆️ 위
+              </button>
+              <button id="alignBottomBtn" class="bg-blue-500 text-white px-2 py-1 rounded text-sm hover:bg-blue-600">
+                ⬇️ 아래
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+              <button id="matchHeightBtn" class="bg-green-500 text-white px-2 py-1 rounded text-sm hover:bg-green-600">
+                📏 높이 맞추기
+              </button>
+              <button id="matchWidthBtn" class="bg-green-500 text-white px-2 py-1 rounded text-sm hover:bg-green-600">
+                📐 너비 맞추기
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="distributeHorizontalBtn" class="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600">
+                ↔️ 가로 간격
+              </button>
+              <button id="distributeVerticalBtn" class="bg-purple-500 text-white px-2 py-1 rounded text-sm hover:bg-purple-600">
+                ↕️ 세로 간격
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 선택된 위치 정보 -->
+        <div id="selectedLocationInfo" class="mb-6 hidden">
+          <h3 class="font-semibold mb-2">선택된 위치</h3>
+          <div class="bg-gray-50 p-3 rounded">
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">위치 코드:</label>
+              <input type="text" id="editLocationCode" class="w-full border rounded px-2 py-1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">X:</label>
+              <input type="number" id="editX" class="w-full border rounded px-2 py-1" step="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">Y:</label>
+              <input type="number" id="editY" class="w-full border rounded px-2 py-1" step="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">너비:</label>
+              <input type="number" id="editWidth" class="w-full border rounded px-2 py-1" step="1" min="20">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">높이:</label>
+              <input type="number" id="editHeight" class="w-full border rounded px-2 py-1" step="1" min="20">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">상태:</label>
+              <select id="editStatus" class="w-full border rounded px-2 py-1">
+                <option value="available">사용가능</option>
+                <option value="occupied">점유중</option>
+                <option value="maintenance">점검중</option>
+                <option value="disabled">사용불가</option>
+              </select>
+            </div>
+            <button id="saveLocationBtn" class="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mb-2">
+              저장
+            </button>
+            <button id="deleteLocationBtn" class="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+              삭제
+            </button>
+          </div>
+        </div>
+
+        <!-- 선택된 배경 요소 정보 -->
+        <div id="selectedBackgroundInfo" class="mb-6 hidden">
+          <h3 class="font-semibold mb-2">선택된 배경 요소</h3>
+          <div class="bg-gray-50 p-3 rounded">
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">라벨/이름:</label>
+              <input type="text" id="editBackgroundLabel" class="w-full border rounded px-2 py-1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">X:</label>
+              <input type="number" id="editBgX" class="w-full border rounded px-2 py-1" step="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">Y:</label>
+              <input type="number" id="editBgY" class="w-full border rounded px-2 py-1" step="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">너비:</label>
+              <input type="number" id="editBgWidth" class="w-full border rounded px-2 py-1" step="1" min="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">높이:</label>
+              <input type="number" id="editBgHeight" class="w-full border rounded px-2 py-1" step="1" min="1">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">배경색:</label>
+              <input type="color" id="editBgFill" class="w-full border rounded px-2 py-1 h-10">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">테두리색:</label>
+              <input type="color" id="editBgStroke" class="w-full border rounded px-2 py-1 h-10">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">텍스트 색상 (텍스트인 경우):</label>
+              <input type="color" id="editBgTextColor" class="w-full border rounded px-2 py-1 h-10">
+            </div>
+            <div class="mb-2">
+              <label class="text-sm text-gray-600">텍스트 크기 (텍스트인 경우):</label>
+              <input type="number" id="editBgFontSize" class="w-full border rounded px-2 py-1" step="1" min="8" max="72" value="15">
+            </div>
+            <button id="saveBackgroundBtn" class="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mb-2">
+              저장
+            </button>
+            <button id="deleteBackgroundBtn" class="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+              삭제
+            </button>
+          </div>
+        </div>
+
+        <!-- 옵션 -->
+        <div class="mb-6">
+          <h3 class="font-semibold mb-2">옵션</h3>
+          <label class="flex items-center mb-2">
+            <input type="checkbox" id="snapToGrid" class="mr-2">
+            <span class="text-sm">그리드에 맞추기</span>
+          </label>
+          <label class="flex items-center mb-2">
+            <input type="checkbox" id="showGrid" checked class="mr-2">
+            <span class="text-sm">그리드 표시</span>
+          </label>
+        </div>
+
+        <!-- 되돌리기/다시하기 버튼 -->
+        <div class="mb-4 grid grid-cols-2 gap-2">
+          <button id="undoBtn" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            ↶ 되돌리기
+          </button>
+          <button id="redoBtn" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 font-semibold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            ↷ 다시하기
+          </button>
+        </div>
+
+        <!-- 저장 버튼 -->
+        <button id="saveAllBtn" class="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 font-bold">
+          💾 모든 변경사항 저장
+        </button>
+      </div>
+
+      <!-- 캔버스 영역 -->
+      <div class="canvas-container" id="canvasContainer">
+        <div class="canvas" id="canvas">
+          <div class="grid-overlay" id="gridOverlay"></div>
+          <!-- 위치 박스들이 여기에 동적으로 추가됨 -->
+        </div>
+        
+        <!-- 줌 컨트롤 -->
+        <div class="zoom-controls">
+          <button id="zoomOutBtn" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-sm">−</button>
+          <span id="zoomLevel" class="px-3 py-1 text-sm font-semibold">100%</span>
+          <button id="zoomInBtn" class="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-sm">+</button>
+          <button id="resetZoomBtn" class="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs ml-1">리셋</button>
+        </div>
+        
+        <!-- 검색 박스 -->
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="위치 코드 검색..." 
+                 class="w-full border rounded px-2 py-1 text-sm">
+          <div id="searchResults" class="mt-2 max-h-40 overflow-y-auto hidden"></div>
+        </div>
+        
+        <!-- 미니맵 -->
+        <div class="minimap" id="minimap">
+          <div class="minimap-viewport" id="minimapViewport"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 컨텍스트 메뉴 -->
+  <div class="context-menu" id="contextMenu">
+    <div class="context-menu-item" data-action="copy">복사 (Ctrl+C)</div>
+    <div class="context-menu-item" data-action="paste">붙여넣기 (Ctrl+V)</div>
+    <div class="context-menu-item" data-action="duplicate">복제 (Ctrl+D)</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="delete">삭제 (Delete)</div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" data-action="selectAll">전체 선택 (Ctrl+A)</div>
+    <div class="context-menu-item" data-action="clearSelection">선택 해제</div>
+  </div>
+
+  <script src="js/location_editor.js"></script>
+</body>
+</html>

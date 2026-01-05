@@ -424,7 +424,17 @@ function initializeEventListeners() {
         if (location) {
           location = normalizeLocationCode(location);
         }
-        const receivingPlace = document.getElementById("receivingPlaceInput")?.value.trim() || '';
+        // 입고처 값 가져오기 (드롭다운 또는 직접 입력)
+        const receivingPlaceSelect = document.getElementById("receivingPlaceSelect");
+        const receivingPlaceInput = document.getElementById("receivingPlaceInput");
+        let receivingPlace = '';
+        
+        if (receivingPlaceSelect && !receivingPlaceSelect.classList.contains('hidden') && receivingPlaceSelect.value) {
+          receivingPlace = receivingPlaceSelect.value.trim();
+        } else if (receivingPlaceInput && !receivingPlaceInput.classList.contains('hidden')) {
+          receivingPlace = receivingPlaceInput.value.trim();
+        }
+        
         const receiveDate = document.getElementById("receiveDateInput").value;
         const parts = Array.from(document.querySelectorAll(".part-input")).map(el => el.value.trim());
         const qtys = Array.from(document.querySelectorAll(".qty-input")).map(el => parseInt(el.value));
@@ -1083,6 +1093,7 @@ export async function initSection() {
         setTimeout(async () => {
           setupLocationDropdownToggle();
           attachAutoLocationCheckboxListener();
+          setupReceivingPlaceToggle();
           // 드롭다운이 기본이므로 초기 로드
           await loadAvailableLocationsDropdown();
         }, 100);
@@ -1184,6 +1195,7 @@ export async function initSection() {
   if (addPlanForm && !addPlanForm.classList.contains('hidden')) {
     setupLocationDropdownToggle();
     attachAutoLocationCheckboxListener();
+    setupReceivingPlaceToggle();
     // 드롭다운이 기본이므로 초기 로드
     await loadAvailableLocationsDropdown();
   }
@@ -1542,7 +1554,17 @@ async function handleSubmitPlan() {
       }
     }
   }
-  const receivingPlace = document.getElementById("receivingPlaceInput")?.value.trim() || '';
+  // 입고처 값 가져오기 (드롭다운 또는 직접 입력)
+  const receivingPlaceSelect = document.getElementById("receivingPlaceSelect");
+  const receivingPlaceInput = document.getElementById("receivingPlaceInput");
+  let receivingPlace = '';
+  
+  if (receivingPlaceSelect && !receivingPlaceSelect.classList.contains('hidden') && receivingPlaceSelect.value) {
+    receivingPlace = receivingPlaceSelect.value.trim();
+  } else if (receivingPlaceInput && !receivingPlaceInput.classList.contains('hidden')) {
+    receivingPlace = receivingPlaceInput.value.trim();
+  }
+  
   const receiveDate = document.getElementById("receiveDateInput").value;
   const parts = Array.from(document.querySelectorAll(".part-input")).map(el => el.value.trim());
   const qtys = Array.from(document.querySelectorAll(".qty-input")).map(el => parseInt(el.value));
@@ -1933,6 +1955,322 @@ function setupLocationDropdownToggle() {
   });
   
   console.log('드롭다운 토글 이벤트 리스너 설정 완료');
+  
+  // 빈 위치 시각적으로 보기 버튼 이벤트
+  const viewLocationMapBtn = document.getElementById('viewLocationMapBtn');
+  if (viewLocationMapBtn) {
+    const newViewBtn = viewLocationMapBtn.cloneNode(true);
+    viewLocationMapBtn.parentNode.replaceChild(newViewBtn, viewLocationMapBtn);
+    
+    newViewBtn.addEventListener('click', async () => {
+      await showLocationMapModal();
+    });
+  }
+}
+
+// 위치 맵 모달 표시 (입고 계획 폼에서 사용)
+async function showLocationMapModal() {
+  if (!window.supabase) {
+    alert('Supabase가 아직 로드되지 않았습니다.');
+    return;
+  }
+  
+  const supabase = window.supabase;
+  
+  // 모달 HTML 생성
+  const modalHTML = `
+    <div id="locationMapModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="p-6 border-b flex justify-between items-center">
+          <h2 class="text-2xl font-bold">빈 위치 확인</h2>
+          <button id="closeLocationMapModal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+        </div>
+        <div class="p-6 overflow-auto flex-1">
+          <div id="locationMapContent" class="text-center py-8">
+            <div class="text-gray-500">로딩 중...</div>
+          </div>
+        </div>
+        <div class="p-4 border-t bg-gray-50">
+          <div class="flex gap-4 text-sm">
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-green-200 border border-green-400"></div>
+              <span>빈 위치 (사용 가능)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-red-200 border border-red-400"></div>
+              <span>사용 중</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-4 h-4 bg-gray-200 border border-gray-400"></div>
+              <span>사용 불가/점검 중</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // 기존 모달이 있으면 제거
+  const existingModal = document.getElementById('locationMapModal');
+  if (existingModal) {
+    existingModal.remove();
+  }
+  
+  // 모달 추가
+  document.body.insertAdjacentHTML('beforeend', modalHTML);
+  
+  // 닫기 버튼 이벤트
+  document.getElementById('closeLocationMapModal').addEventListener('click', () => {
+    document.getElementById('locationMapModal').remove();
+  });
+  
+  // 모달 배경 클릭 시 닫기
+  document.getElementById('locationMapModal').addEventListener('click', (e) => {
+    if (e.target.id === 'locationMapModal') {
+      e.target.remove();
+    }
+  });
+  
+  // 데이터 로드 및 표시
+  const contentDiv = document.getElementById('locationMapContent');
+  contentDiv.innerHTML = '<div class="text-gray-500">데이터를 불러오는 중...</div>';
+  
+  try {
+    // 1. 모든 위치 로드
+    const { data: locations, error: locError } = await supabase
+      .from('wp1_locations')
+      .select('location_code, x, y, width, height, status')
+      .order('location_code');
+    
+    if (locError) throw locError;
+    
+    // 2. 실제 사용 중인 위치 확인 (receiving_items에서)
+    const { data: receivingItems, error: recError } = await supabase
+      .from('receiving_items')
+      .select('location_code, container_no, part_no, quantity');
+    
+    if (recError) throw recError;
+    
+    // 3. 출고된 항목 확인 (shipping_instruction에서 shipped된 항목)
+    const { data: shippedItems, error: shipError } = await supabase
+      .from('shipping_instruction')
+      .select('container_no, status')
+      .eq('status', 'shipped');
+    
+    if (shipError) throw shipError;
+    
+    // 출고된 컨테이너 번호 집합
+    const shippedContainers = new Set((shippedItems || []).map(item => item.container_no));
+    
+    // 실제 사용 중인 위치 집합 (출고되지 않은 항목만)
+    const occupiedLocations = new Set();
+    (receivingItems || []).forEach(item => {
+      if (item.location_code && !shippedContainers.has(item.container_no)) {
+        const normalizedCode = normalizeLocationCode(item.location_code);
+        occupiedLocations.add(normalizedCode);
+      }
+    });
+    
+    // 4. SVG 생성
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '1000');
+    svg.setAttribute('height', '800');
+    svg.setAttribute('viewBox', '0 0 1000 800');
+    svg.style.border = '2px solid #333';
+    svg.style.backgroundColor = 'white';
+    
+    // 배경 요소 로드 (localStorage에서)
+    let backgroundElements = [];
+    try {
+      const saved = localStorage.getItem('wp1_background_elements');
+      if (saved) {
+        backgroundElements = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('배경 요소 로드 실패:', e);
+    }
+    
+    // 배경 요소 렌더링
+    backgroundElements.forEach(bg => {
+      if (bg.type === 'rect') {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', bg.x);
+        rect.setAttribute('y', bg.y);
+        rect.setAttribute('width', bg.width);
+        rect.setAttribute('height', bg.height);
+        rect.setAttribute('fill', bg.fill || '#d3d3d3');
+        rect.setAttribute('stroke', bg.stroke || '#000');
+        rect.setAttribute('stroke-width', bg.strokeWidth || 1);
+        svg.appendChild(rect);
+      } else if (bg.type === 'text') {
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', bg.x);
+        text.setAttribute('y', bg.y);
+        text.setAttribute('font-size', bg.fontSize || 15);
+        text.setAttribute('fill', bg.fill || '#000');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = bg.text || bg.label || '';
+        svg.appendChild(text);
+      }
+    });
+    
+    // 위치 렌더링
+    const locationsWithCoords = (locations || []).filter(loc => 
+      loc.x !== null && loc.y !== null && loc.width !== null && loc.height !== null
+    );
+    
+    locationsWithCoords.forEach(loc => {
+      const normalizedCode = normalizeLocationCode(loc.location_code);
+      const isOccupied = occupiedLocations.has(normalizedCode);
+      const isAvailable = loc.status === 'available' && !isOccupied;
+      
+      // 위치 박스
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', loc.x);
+      rect.setAttribute('y', loc.y);
+      rect.setAttribute('width', loc.width);
+      rect.setAttribute('height', loc.height);
+      
+      if (isAvailable) {
+        // 빈 위치 - 하이라이트 (초록색)
+        rect.setAttribute('fill', '#90EE90');
+        rect.setAttribute('fill-opacity', '0.7');
+        rect.setAttribute('stroke', '#228B22');
+        rect.setAttribute('stroke-width', '2');
+      } else if (isOccupied) {
+        // 사용 중 (빨간색)
+        rect.setAttribute('fill', '#FFB6C1');
+        rect.setAttribute('fill-opacity', '0.7');
+        rect.setAttribute('stroke', '#DC143C');
+        rect.setAttribute('stroke-width', '2');
+      } else {
+        // 사용 불가/점검 중 (회색)
+        rect.setAttribute('fill', '#D3D3D3');
+        rect.setAttribute('fill-opacity', '0.5');
+        rect.setAttribute('stroke', '#808080');
+        rect.setAttribute('stroke-width', '1');
+      }
+      
+      svg.appendChild(rect);
+      
+      // 위치 코드 텍스트
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', loc.x + loc.width / 2);
+      text.setAttribute('y', loc.y + loc.height / 2);
+      text.setAttribute('font-size', '10');
+      text.setAttribute('fill', '#000');
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.textContent = normalizedCode;
+      svg.appendChild(text);
+    });
+    
+    contentDiv.innerHTML = '';
+    contentDiv.appendChild(svg);
+    
+    // 통계 정보 추가
+    const stats = {
+      total: locationsWithCoords.length,
+      empty: locationsWithCoords.filter(loc => 
+        loc.status === 'available' && !occupiedLocations.has(normalizeLocationCode(loc.location_code))
+      ).length,
+      occupied: locationsWithCoords.filter(loc => 
+        occupiedLocations.has(normalizeLocationCode(loc.location_code))
+      ).length,
+      unavailable: locationsWithCoords.filter(loc => 
+        loc.status !== 'available' || (loc.status === 'available' && occupiedLocations.has(normalizeLocationCode(loc.location_code)))
+      ).length - locationsWithCoords.filter(loc => 
+        occupiedLocations.has(normalizeLocationCode(loc.location_code))
+      ).length
+    };
+    
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'mt-4 p-4 bg-gray-50 rounded-lg';
+    statsDiv.innerHTML = `
+      <div class="grid grid-cols-4 gap-4 text-center">
+        <div>
+          <div class="text-2xl font-bold">${stats.total}</div>
+          <div class="text-sm text-gray-600">전체 위치</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-green-600">${stats.empty}</div>
+          <div class="text-sm text-gray-600">빈 위치</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-red-600">${stats.occupied}</div>
+          <div class="text-sm text-gray-600">사용 중</div>
+        </div>
+        <div>
+          <div class="text-2xl font-bold text-gray-600">${stats.unavailable}</div>
+          <div class="text-sm text-gray-600">사용 불가/점검</div>
+        </div>
+      </div>
+    `;
+    contentDiv.appendChild(statsDiv);
+    
+  } catch (error) {
+    console.error('위치 현황 로드 실패:', error);
+    contentDiv.innerHTML = `<div class="text-red-600">데이터 로드 실패: ${error.message}</div>`;
+  }
+}
+
+// 입고처 드롭다운/직접 입력 토글 설정
+function setupReceivingPlaceToggle() {
+  const showBtn = document.getElementById('showReceivingPlaceInputBtn');
+  const hideBtn = document.getElementById('hideReceivingPlaceInputBtn');
+  const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
+  const receivingPlaceInput = document.getElementById('receivingPlaceInput');
+  
+  if (!showBtn || !hideBtn || !receivingPlaceSelect || !receivingPlaceInput) {
+    console.log('입고처 드롭다운 요소를 찾을 수 없습니다:', {
+      showBtn: !!showBtn,
+      hideBtn: !!hideBtn,
+      receivingPlaceSelect: !!receivingPlaceSelect,
+      receivingPlaceInput: !!receivingPlaceInput
+    });
+    return;
+  }
+  
+  // 기존 이벤트 리스너 제거 (중복 방지)
+  const newShowBtn = showBtn.cloneNode(true);
+  showBtn.parentNode.replaceChild(newShowBtn, showBtn);
+  const newHideBtn = hideBtn.cloneNode(true);
+  hideBtn.parentNode.replaceChild(newHideBtn, hideBtn);
+  const newSelect = receivingPlaceSelect.cloneNode(true);
+  receivingPlaceSelect.parentNode.replaceChild(newSelect, receivingPlaceSelect);
+  
+  // 새로운 요소 참조
+  const actualShowBtn = document.getElementById('showReceivingPlaceInputBtn');
+  const actualHideBtn = document.getElementById('hideReceivingPlaceInputBtn');
+  const actualSelect = document.getElementById('receivingPlaceSelect');
+  
+  actualShowBtn.addEventListener('click', () => {
+    console.log('직접 입력 버튼 클릭');
+    actualSelect.classList.add('hidden');
+    receivingPlaceInput.classList.remove('hidden');
+    actualShowBtn.classList.add('hidden');
+    actualHideBtn.classList.remove('hidden');
+    actualSelect.value = '';
+  });
+  
+  actualHideBtn.addEventListener('click', () => {
+    console.log('드롭다운 선택 버튼 클릭');
+    actualSelect.classList.remove('hidden');
+    receivingPlaceInput.classList.add('hidden');
+    actualShowBtn.classList.remove('hidden');
+    actualHideBtn.classList.add('hidden');
+    receivingPlaceInput.value = '';
+    // 드롭다운도 초기화
+    const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
+    if (receivingPlaceSelect) receivingPlaceSelect.value = '';
+  });
+  
+  // 드롭다운 선택 시 입력란에 값 설정 (참고용)
+  actualSelect.addEventListener('change', (e) => {
+    console.log('입고처 드롭다운 선택:', e.target.value);
+  });
+  
+  console.log('입고처 드롭다운 토글 이벤트 리스너 설정 완료');
 }
 
 // 체크박스 이벤트 리스너 직접 연결 함수

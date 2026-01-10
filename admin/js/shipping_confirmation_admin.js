@@ -728,17 +728,83 @@ window.confirmShipping = async function(shippingInstructionId) {
       console.log('Filtered label_ids to update:', shippedLabelIds);
       
       if (shippedLabelIds.length > 0) {
-        console.log('Updating receiving_items with label_ids:', shippedLabelIds);
-        const { data: updateData, error: updateLocError } = await supabase
-          .from('receiving_items')
-          .update({ location_code: null })
-          .in('label_id', shippedLabelIds)
-          .select();
-        if (updateLocError) {
-          console.error('Error updating receiving_items:', updateLocError);
-          throw updateLocError;
+        // CKD PALLET인 경우 수량 차감 처리
+        const { data: siInfo } = await supabase
+          .from('shipping_instruction')
+          .select('part_no')
+          .eq('id', shippingInstructionId)
+          .single();
+        
+        if (siInfo && siInfo.part_no === 'CKD PALLET') {
+          // CKD PALLET: receiving_items에서 수량 차감 (FIFO)
+          console.log('Processing CKD PALLET shipping confirmation');
+          
+          // shipping_instruction_items에서 label_id와 qty 가져오기
+          const { data: itemsWithQty, error: itemsQtyError } = await supabase
+            .from('shipping_instruction_items')
+            .select('label_id, qty')
+            .eq('shipping_instruction_id', shippingInstructionId);
+          
+          if (itemsQtyError) throw itemsQtyError;
+          
+          // receiving_log에 기록된 label_id 조회 (실제 입고 처리된 것만)
+          const { data: logs, error: logError } = await supabase
+            .from('receiving_log')
+            .select('label_id');
+          
+          if (logError) throw logError;
+          
+          const receivedLabelIds = new Set((logs || []).map(l => String(l.label_id)));
+          
+          // 각 label_id에 대해 receiving_items에서 수량 차감 (receiving_log에 기록된 것만)
+          for (const item of itemsWithQty || []) {
+            if (!item.label_id || !item.qty) continue;
+            
+            // receiving_log에 기록되지 않은 항목은 스킵
+            if (!receivedLabelIds.has(String(item.label_id))) {
+              console.log(`Skipping label_id ${item.label_id} - not in receiving_log`);
+              continue;
+            }
+            
+            const { data: receivingItem, error: recError } = await supabase
+              .from('receiving_items')
+              .select('id, quantity')
+              .eq('label_id', item.label_id)
+              .single();
+            
+            if (recError || !receivingItem) continue;
+            
+            const currentQty = receivingItem.quantity || 0;
+            const shippingQty = item.qty || 0;
+            
+            if (currentQty <= shippingQty) {
+              // 전체 차감 (삭제)
+              await supabase
+                .from('receiving_items')
+                .delete()
+                .eq('id', receivingItem.id);
+            } else {
+              // 부분 차감 (수량 업데이트)
+              await supabase
+                .from('receiving_items')
+                .update({ quantity: currentQty - shippingQty })
+                .eq('id', receivingItem.id);
+            }
+          }
+        } else {
+          // 일반 품목: location_code를 null로 업데이트
+          console.log('Updating receiving_items with label_ids:', shippedLabelIds);
+          const { data: updateData, error: updateLocError } = await supabase
+            .from('receiving_items')
+            .update({ location_code: null })
+            .in('label_id', shippedLabelIds)
+            .select();
+          if (updateLocError) {
+            console.error('Error updating receiving_items:', updateLocError);
+            throw updateLocError;
+          }
+          console.log('Updated receiving_items:', updateData);
         }
-        console.log('Updated receiving_items:', updateData);
       } else {
         // 4.3 shipping_instruction_items에 label_id가 없는 경우, container_no로 업데이트
         console.log('No label_ids found in shipping_instruction_items, using container_no:', si.container_no);

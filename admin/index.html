@@ -61,6 +61,7 @@
       if (name === 'receiving_plan') jsName = 'receiving';
       if (name === 'shipping_plan') jsName = 'shipping';
       if (name === 'receiving') jsName = 'receiving_admin';
+      if (name === 'ckd_pallet') jsName = 'ckd_pallet';
       
       // Load section-specific JavaScript (동적 import)
       console.log('Loading section JS:', jsName);
@@ -134,6 +135,9 @@
         </div>
         <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
           <a href="location_editor.html" target="_blank" style="color: white; text-decoration: none;">🗺️ 시각적 위치 편집기</a>
+        </div>
+        <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
+          <a href="#ckd_pallet" style="color: white; text-decoration: none;">📦 CKD PALLET 관리</a>
         </div>
       </nav>
       <div class="mt-8">

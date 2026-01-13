@@ -127,17 +127,29 @@
         <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
           <a href="#daily_report" style="color: white; text-decoration: none;">📈 일일 입출고 리포트</a>
         </div>
-        <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #16a34a; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
-          <a href="location_master.html" target="_blank" style="color: white; text-decoration: none;">⚙️ 장소 마스터 관리</a>
-        </div>
-        <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
-          <a href="flagged_containers.html" target="_blank" style="color: white; text-decoration: none;">🚨 문제 컨테이너 관리</a>
-        </div>
-        <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
-          <a href="location_editor.html" target="_blank" style="color: white; text-decoration: none;">🗺️ 시각적 위치 편집기</a>
-        </div>
         <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
           <a href="#ckd_pallet" style="color: white; text-decoration: none;">📦 CKD PALLET 관리</a>
+        </div>
+        <!-- 마스터 관리 메뉴 -->
+        <div id="masterMenu" style="margin-bottom: 8px;">
+          <div id="masterMenuToggle" style="display: block; padding: 12px 16px; background-color: #7c3aed; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;">
+            <span>⚙️ 마스터 관리</span>
+            <span id="masterMenuArrow" style="float: right;">▼</span>
+          </div>
+          <div id="masterSubMenu" style="display: none; margin-top: 4px; padding-left: 8px;">
+            <div style="display: block; padding: 10px 16px; margin-bottom: 4px; background-color: #16a34a; color: white; text-decoration: none; border-radius: 4px; font-size: 13px;">
+              <a href="location_master.html" target="_blank" style="color: white; text-decoration: none;">⚙️ 장소 마스터 관리</a>
+            </div>
+            <div style="display: block; padding: 10px 16px; margin-bottom: 4px; background-color: #dc2626; color: white; text-decoration: none; border-radius: 4px; font-size: 13px;">
+              <a href="flagged_containers.html" target="_blank" style="color: white; text-decoration: none;">🚨 문제 컨테이너 관리</a>
+            </div>
+            <div style="display: block; padding: 10px 16px; margin-bottom: 4px; background-color: #9333ea; color: white; text-decoration: none; border-radius: 4px; font-size: 13px;">
+              <a href="location_editor.html" target="_blank" style="color: white; text-decoration: none;">🗺️ 시각적 위치 편집기</a>
+            </div>
+            <div style="display: block; padding: 10px 16px; margin-bottom: 4px; background-color: #059669; color: white; text-decoration: none; border-radius: 4px; font-size: 13px;">
+              <a href="delivery_locations.html" target="_blank" style="color: white; text-decoration: none;">🚚 Delivery Location 관리</a>
+            </div>
+          </div>
         </div>
       </nav>
       <div class="mt-8">
@@ -195,6 +207,29 @@
     });
     // 초기 언어 설정
     setLang(localStorage.getItem('admin_lang') || 'ko');
+    
+    // 마스터 관리 메뉴 토글 기능
+    document.addEventListener('DOMContentLoaded', () => {
+      const masterMenuToggle = document.getElementById('masterMenuToggle');
+      const masterSubMenu = document.getElementById('masterSubMenu');
+      const masterMenuArrow = document.getElementById('masterMenuArrow');
+      
+      if (masterMenuToggle && masterSubMenu && masterMenuArrow) {
+        // 초기 상태: 닫힘
+        masterSubMenu.style.display = 'none';
+        masterMenuArrow.textContent = '▶';
+        
+        masterMenuToggle.addEventListener('click', () => {
+          if (masterSubMenu.style.display === 'none') {
+            masterSubMenu.style.display = 'block';
+            masterMenuArrow.textContent = '▼';
+          } else {
+            masterSubMenu.style.display = 'none';
+            masterMenuArrow.textContent = '▶';
+          }
+        });
+      }
+    });
   </script>
 </body>
 </html>

@@ -673,8 +673,8 @@ function startResize(loc, box, e) {
     let newHeight = startHeight + (mouseCanvasPos.y - startY);
     
     // 최소 크기
-    newWidth = Math.max(40, newWidth);
-    newHeight = Math.max(20, newHeight);
+    newWidth = Math.max(10, newWidth); // 최소 너비 10px
+    newHeight = Math.max(10, newHeight); // 최소 높이 10px
     
     // 그리드 스냅
     if (snapToGridEnabled) {
@@ -725,6 +725,19 @@ function startResize(loc, box, e) {
 // 이벤트 리스너 설정
 function setupEventListeners() {
   // 새 위치 추가
+  // localStorage에서 너비/높이 불러오기
+  const savedWidth = localStorage.getItem('locationEditor_defaultWidth');
+  const savedHeight = localStorage.getItem('locationEditor_defaultHeight');
+  const newLocationWidthInput = document.getElementById('newLocationWidth');
+  const newLocationHeightInput = document.getElementById('newLocationHeight');
+  
+  if (newLocationWidthInput && savedWidth) {
+    newLocationWidthInput.value = savedWidth;
+  }
+  if (newLocationHeightInput && savedHeight) {
+    newLocationHeightInput.value = savedHeight;
+  }
+  
   document.getElementById('addLocationBtn').addEventListener('click', () => {
     const code = document.getElementById('newLocationCode').value.trim();
     if (!code) {
@@ -741,14 +754,22 @@ function setupEventListeners() {
       return;
     }
     
+    // 너비/높이 가져오기
+    const width = parseInt(newLocationWidthInput.value) || 60;
+    const height = parseInt(newLocationHeightInput.value) || 20;
+    
+    // localStorage에 저장 (다음에 사용할 기본값)
+    localStorage.setItem('locationEditor_defaultWidth', width.toString());
+    localStorage.setItem('locationEditor_defaultHeight', height.toString());
+    
     // 새 위치 생성
     const newLoc = {
       id: 'temp_' + Date.now(),
       location_code: normalizedCode,
       x: 100,
       y: 100,
-      width: 60,
-      height: 20,
+      width: width,
+      height: height,
       status: 'available',
       isNew: true
     };
@@ -962,56 +983,6 @@ function setupEventListeners() {
     });
     updateBatchTools();
     await saveAllLocations();
-  });
-  
-  // 그리드 일괄 생성
-  document.getElementById('createGridBtn').addEventListener('click', () => {
-    const cols = parseInt(document.getElementById('gridCols').value) || 3;
-    const rows = parseInt(document.getElementById('gridRows').value) || 5;
-    const prefix = document.getElementById('gridPrefix').value.trim() || 'A';
-    const spacingX = parseInt(document.getElementById('gridSpacingX').value) || 80;
-    const spacingY = parseInt(document.getElementById('gridSpacingY').value) || 30;
-    const startX = parseInt(document.getElementById('gridStartX').value) || 100;
-    const startY = parseInt(document.getElementById('gridStartY').value) || 100;
-    const width = 60;
-    const height = 20;
-    
-    const newLocs = [];
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const code = `${prefix}-${String(row + 1).padStart(2, '0')}-${String(col + 1).padStart(2, '0')}`;
-        const normalizedCode = normalizeLocationCode(code);
-        
-        // 중복 체크
-        if (locations.some(loc => normalizeLocationCode(loc.location_code) === normalizedCode)) {
-          continue;
-        }
-        
-        const newLoc = {
-          id: 'temp_' + Date.now() + '_' + row + '_' + col,
-          location_code: normalizedCode,
-          x: startX + (col * spacingX),
-          y: startY + (row * spacingY),
-          width: width,
-          height: height,
-          status: 'available',
-          isNew: true
-        };
-        
-        newLocs.push(newLoc);
-        locations.push(newLoc);
-        
-        const box = createLocationBox(newLoc);
-        document.getElementById('canvas').appendChild(box);
-      }
-    }
-    
-    if (newLocs.length > 0) {
-      alert(`${newLocs.length}개의 위치가 생성되었습니다.`);
-      saveAllLocations();
-    } else {
-      alert('생성된 위치가 없습니다. (중복된 코드가 있거나 입력값이 잘못되었습니다)');
-    }
   });
   
   // 그리드 옵션

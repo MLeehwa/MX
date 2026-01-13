@@ -540,6 +540,30 @@ window.printShippingLabel = async function(barcode) {
     const remarks = shipping.remarks || '-';
     const location = shipping.location_code || '-';
     
+    // Delivery Location 정보 조회
+    let destinationInfo = 'Hyundai Transys <br> 6801 Kia Pkwy, West Point, GA 31833'; // 기본값
+    if (shipping.delivery_location_id) {
+      try {
+        const { data: deliveryLocation, error: dlError } = await supabase
+          .from('wp1_delivery_locations')
+          .select('location_name, address, contact_person, contact_phone')
+          .eq('id', shipping.delivery_location_id)
+          .single();
+        
+        if (!dlError && deliveryLocation) {
+          // Delivery Location 정보로 Destination 구성
+          const parts = [];
+          if (deliveryLocation.location_name) parts.push(deliveryLocation.location_name);
+          if (deliveryLocation.address) parts.push(deliveryLocation.address);
+          if (deliveryLocation.contact_person) parts.push(`Contact: ${deliveryLocation.contact_person}`);
+          if (deliveryLocation.contact_phone) parts.push(`Tel: ${deliveryLocation.contact_phone}`);
+          destinationInfo = parts.join(' <br> ') || destinationInfo;
+        }
+      } catch (error) {
+        console.error('Delivery Location 조회 실패:', error);
+      }
+    }
+    
     // 파트별 수량 정보 파싱
     let partQuantities = {};
     if (shipping.part_quantities) {
@@ -583,7 +607,7 @@ window.printShippingLabel = async function(barcode) {
             <th>Address</th>
             <td>1201 O G Skinner Dr, West Point, GA 31833</td>
             <th>Destination</th>
-            <td>Hyundai Transys <br> 6801 Kia Pkwy, West Point, GA 31833</td>
+            <td>${destinationInfo}</td>
           </tr>
         </table>
         <table class='bol-table'>

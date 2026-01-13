@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delivery Location 관리</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+  <script src="config/config.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-6xl mx-auto bg-white shadow-xl rounded-xl p-6">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">📍 Delivery Location 관리</h1>
+      <a href="index.html" class="text-blue-600 hover:text-blue-800">← 관리자 페이지로</a>
+    </div>
+
+    <!-- 추가 폼 -->
+    <div class="bg-blue-50 p-6 rounded-lg border border-blue-200 mb-6">
+      <h2 class="text-lg font-semibold mb-4">새 Delivery Location 추가</h2>
+      <form id="addDeliveryLocationForm" class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block mb-1 font-medium">Location Name *</label>
+          <input type="text" id="locationNameInput" required
+                 class="w-full border rounded px-3 py-2" placeholder="예: 서울 창고">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Address *</label>
+          <input type="text" id="addressInput" required
+                 class="w-full border rounded px-3 py-2" placeholder="예: 서울시 강남구">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Contact Person</label>
+          <input type="text" id="contactPersonInput"
+                 class="w-full border rounded px-3 py-2" placeholder="담당자 이름">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Contact Phone</label>
+          <input type="tel" id="contactPhoneInput"
+                 class="w-full border rounded px-3 py-2" placeholder="010-1234-5678">
+        </div>
+        <div class="col-span-2">
+          <label class="block mb-1 font-medium">Contact Email</label>
+          <input type="email" id="contactEmailInput"
+                 class="w-full border rounded px-3 py-2" placeholder="example@email.com">
+        </div>
+        <div class="col-span-2">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="isActiveInput" checked>
+            <span>활성화</span>
+          </label>
+        </div>
+        <div class="col-span-2">
+          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
+            추가
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 목록 -->
+    <div class="bg-white rounded-lg border">
+      <h2 class="text-lg font-semibold p-4 border-b">Delivery Location 목록</h2>
+      <div id="deliveryLocationsList" class="p-4">
+        <div class="text-center text-gray-500 py-8">로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 수정 모달 -->
+  <div id="editModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+      <h3 class="text-lg font-semibold mb-4">Delivery Location 수정</h3>
+      <form id="editDeliveryLocationForm" class="space-y-4">
+        <input type="hidden" id="editId">
+        <div>
+          <label class="block mb-1 font-medium">Location Name *</label>
+          <input type="text" id="editLocationName" required
+                 class="w-full border rounded px-3 py-2">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Address *</label>
+          <input type="text" id="editAddress" required
+                 class="w-full border rounded px-3 py-2">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Contact Person</label>
+          <input type="text" id="editContactPerson"
+                 class="w-full border rounded px-3 py-2">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Contact Phone</label>
+          <input type="tel" id="editContactPhone"
+                 class="w-full border rounded px-3 py-2">
+        </div>
+        <div>
+          <label class="block mb-1 font-medium">Contact Email</label>
+          <input type="email" id="editContactEmail"
+                 class="w-full border rounded px-3 py-2">
+        </div>
+        <div>
+          <label class="flex items-center gap-2">
+            <input type="checkbox" id="editIsActive">
+            <span>활성화</span>
+          </label>
+        </div>
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+            저장
+          </button>
+          <button type="button" id="cancelEditBtn" class="flex-1 bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+            취소
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/delivery_locations.js"></script>
+</body>
+</html>

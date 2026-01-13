@@ -82,6 +82,58 @@ const i18n = {
 // 현재 언어 설정
 let currentLang = localStorage.getItem('admin_location_lang') || 'ko';
 
+// Delivery Location 드롭다운 로드 함수
+async function loadDeliveryLocations() {
+  const select = document.getElementById('deliveryLocationSelect');
+  if (!select) return;
+  
+  try {
+    const { data, error } = await supabase
+      .from('wp1_delivery_locations')
+      .select('id, location_name')
+      .eq('is_active', true)
+      .order('location_name', { ascending: true });
+    
+    if (error) throw error;
+    
+    // 기존 옵션 유지 (선택... 옵션)
+    const firstOption = select.querySelector('option[value=""]');
+    select.innerHTML = '';
+    if (firstOption) {
+      select.appendChild(firstOption);
+    } else {
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '선택...';
+      select.appendChild(defaultOption);
+    }
+    
+    // Delivery Location 옵션 추가
+    if (data && data.length > 0) {
+      data.forEach(loc => {
+        const option = document.createElement('option');
+        option.value = loc.id;
+        option.textContent = loc.location_name;
+        select.appendChild(option);
+      });
+    } else {
+      const noOption = document.createElement('option');
+      noOption.value = '';
+      noOption.textContent = '등록된 Delivery Location이 없습니다';
+      noOption.disabled = true;
+      select.appendChild(noOption);
+    }
+  } catch (error) {
+    console.error('Delivery Location 로드 실패:', error);
+    const errorOption = document.createElement('option');
+    errorOption.value = '';
+    errorOption.textContent = '로드 실패';
+    errorOption.disabled = true;
+    select.innerHTML = '';
+    select.appendChild(errorOption);
+  }
+}
+
 // 언어 설정 함수
 function setLang(lang) {
   currentLang = lang;
@@ -782,13 +834,29 @@ function showLocationModal(loc, info) {
       } else {
         // 없으면 출하지시 버튼 + 프린트 버튼(생성 후 활성화)
         shippingOrderArea.innerHTML = `
-          <div class="mt-4 flex gap-2 items-end">
-            <input type="date" id="shippingDateInput" class="border rounded px-2 py-1" />
-            <button id="createShippingBtn" class="bg-green-600 text-white px-4 py-1 rounded">출하지시</button>
-            <button id="printShippingBtn" class="bg-blue-400 text-white px-4 py-1 rounded" disabled>출하지시서 프린트</button>
+          <div class="mt-4 space-y-2">
+            <div class="flex gap-2 items-end">
+              <div class="flex-1">
+                <label class="block text-xs text-gray-600 mb-1">출고 날짜</label>
+                <input type="date" id="shippingDateInput" class="border rounded px-2 py-1 w-full" />
+              </div>
+              <div class="flex-1">
+                <label class="block text-xs text-gray-600 mb-1">Delivery Location</label>
+                <select id="deliveryLocationSelect" class="border rounded px-2 py-1 w-full">
+                  <option value="">선택...</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button id="createShippingBtn" class="bg-green-600 text-white px-4 py-1 rounded flex-1">출하지시</button>
+              <button id="printShippingBtn" class="bg-blue-400 text-white px-4 py-1 rounded" disabled>출하지시서 프린트</button>
+            </div>
           </div>
           <div id="shippingResultMsg" class="mt-2 text-sm"></div>
         `;
+        
+        // Delivery Location 드롭다운 로드
+        await loadDeliveryLocations();
         let lastSI = null;
         document.getElementById('createShippingBtn').onclick = async () => {
           const shippingDate = document.getElementById('shippingDateInput').value;
@@ -884,6 +952,12 @@ function showLocationModal(loc, info) {
           // 파트별 수량 정보를 JSON으로 저장
           const partQuantitiesJson = JSON.stringify(partQuantities);
           
+          // Delivery Location ID 가져오기
+          const deliveryLocationSelect = document.getElementById('deliveryLocationSelect');
+          const deliveryLocationId = deliveryLocationSelect && deliveryLocationSelect.value 
+            ? parseInt(deliveryLocationSelect.value) 
+            : null;
+          
           const { data, error } = await supabase.from('shipping_instruction').insert({
             location_code: loc,
             part_no: info.part_no,
@@ -893,7 +967,8 @@ function showLocationModal(loc, info) {
             barcode: crypto.randomUUID(),
             container_no: info.container_id,
             label_id: null, // 컨테이너 단위이므로 label_id는 null
-            part_quantities: partQuantitiesJson // 파트별 수량 정보 저장
+            part_quantities: partQuantitiesJson, // 파트별 수량 정보 저장
+            delivery_location_id: deliveryLocationId // Delivery Location ID 저장
           }).select('*').single();
           if (error) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성 실패: ' + error.message;
@@ -930,8 +1005,8 @@ function showLocationModal(loc, info) {
           printBtn.classList.remove('bg-blue-400');
           printBtn.classList.add('bg-blue-600');
         };
-        document.getElementById('printShippingBtn').onclick = () => {
-          if (lastSI) printShippingLabel(lastSI);
+        document.getElementById('printShippingBtn').onclick = async () => {
+          if (lastSI) await printShippingLabel(lastSI);
         };
       }
     })();
@@ -942,7 +1017,7 @@ function showLocationModal(loc, info) {
 }
 
 // 출하지시서 라벨 프린트 함수
-function printShippingLabel(si) {
+async function printShippingLabel(si) {
   const now = new Date();
   const dateStr = now.toISOString().slice(0,10).replace(/-/g,'.');
   const timeStr = now.toTimeString().slice(0,5);
@@ -951,6 +1026,30 @@ function printShippingLabel(si) {
   const description = si.description || '-';
   const remarks = si.remarks || '-';
   const location = si.location_code || '-';
+  
+  // Delivery Location 정보 조회
+  let destinationInfo = 'Hyundai Transys <br> 6601 Kia Pkwy, West Point, GA 31833'; // 기본값
+  if (si.delivery_location_id) {
+    try {
+        const { data: deliveryLocation, error: dlError } = await supabase
+          .from('wp1_delivery_locations')
+          .select('location_name, address, contact_person, contact_phone')
+          .eq('id', si.delivery_location_id)
+          .single();
+      
+      if (!dlError && deliveryLocation) {
+        // Delivery Location 정보로 Destination 구성
+        const parts = [];
+        if (deliveryLocation.location_name) parts.push(deliveryLocation.location_name);
+        if (deliveryLocation.address) parts.push(deliveryLocation.address);
+        if (deliveryLocation.contact_person) parts.push(`Contact: ${deliveryLocation.contact_person}`);
+        if (deliveryLocation.contact_phone) parts.push(`Tel: ${deliveryLocation.contact_phone}`);
+        destinationInfo = parts.join(' <br> ') || destinationInfo;
+      }
+    } catch (error) {
+      console.error('Delivery Location 조회 실패:', error);
+    }
+  }
   
   // 파트별 수량 정보 파싱
   let partQuantities = {};
@@ -995,7 +1094,7 @@ function printShippingLabel(si) {
           <th>Address</th>
           <td>1201 O G Skinner Dr, West Point, GA 31833</td>
           <th>Destination</th>
-          <td>Hyundai Transys <br> 6601 Kia Pkwy, West Point, GA 31833</td>
+          <td>${destinationInfo}</td>
         </tr>
       </table>
       <table class='bol-table'>

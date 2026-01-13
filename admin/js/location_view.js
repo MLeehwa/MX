@@ -210,7 +210,7 @@ let currentSVG = null;
 let currentOccupied = {};
 
 // SVG 초기화 함수
-function initializeSVG() {
+async function initializeSVG() {
   const svg = document.getElementById('locationSVG');
   if (!svg) return null;
 
@@ -219,15 +219,71 @@ function initializeSVG() {
     svg.removeChild(svg.firstChild);
   }
 
-  // 배경 요소 로드 및 렌더링 (localStorage에서, 없으면 현재 HTML의 하드코딩된 값 사용)
+  // 배경 요소 로드 및 렌더링 (Supabase에서, 없으면 localStorage에서, 없으면 기본값 사용)
   let backgroundElements = [];
   try {
-    const saved = localStorage.getItem('wp1_background_elements');
-    if (saved) {
-      backgroundElements = JSON.parse(saved);
+    // 먼저 Supabase에서 로드 시도
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('wp1_background_elements')
+        .select('elements_data')
+        .eq('id', 1)
+        .single();
+      
+      if (!error && data && data.elements_data) {
+        backgroundElements = Array.isArray(data.elements_data) ? data.elements_data : [];
+        // localStorage에도 백업 저장 (오프라인 대비)
+        if (backgroundElements.length > 0) {
+          localStorage.setItem('wp1_background_elements', JSON.stringify(backgroundElements));
+        }
+      } else {
+        // Supabase에 데이터가 없으면 localStorage에서 로드 시도
+        const saved = localStorage.getItem('wp1_background_elements');
+        if (saved) {
+          backgroundElements = JSON.parse(saved);
+        } else {
+          // 둘 다 없으면 기본값 사용
+          backgroundElements = [
+            { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+            { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+            { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+            { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+          ];
+        }
+      }
     } else {
-      // localStorage에 없으면 현재 HTML에 하드코딩된 기본값 사용
-      // location_view.html의 기본값과 동일하게 설정
+      // Supabase가 없으면 localStorage에서 로드
+      const saved = localStorage.getItem('wp1_background_elements');
+      if (saved) {
+        backgroundElements = JSON.parse(saved);
+      } else {
+        // 기본값 사용
+        backgroundElements = [
+          { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+          { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+          { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+          { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+        ];
+      }
+    }
+  } catch (error) {
+    console.error('배경 요소 로드 실패:', error);
+    // 에러 발생 시 localStorage에서 로드 시도
+    try {
+      const saved = localStorage.getItem('wp1_background_elements');
+      if (saved) {
+        backgroundElements = JSON.parse(saved);
+      } else {
+        // 기본값 사용
+        backgroundElements = [
+          { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+          { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+          { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+          { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+        ];
+      }
+    } catch (e) {
+      // localStorage도 실패하면 기본값 사용
       backgroundElements = [
         { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
         { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
@@ -235,15 +291,6 @@ function initializeSVG() {
         { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
       ];
     }
-  } catch (error) {
-    console.error('배경 요소 로드 실패:', error);
-    // 에러 발생 시 기본값 사용
-    backgroundElements = [
-      { type: 'rect', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { type: 'rect', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { type: 'rect', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
-      { type: 'text', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
-    ];
   }
   
   // 배경 요소 렌더링
@@ -653,7 +700,7 @@ async function resetLocationView() {
     svgParent.appendChild(newSVG);
     currentSVG = newSVG;
   }
-  initializeSVG();
+  await initializeSVG();
   // 필터 초기화 (존재할 때만)
   const productFilter = document.getElementById('filterProduct');
   if (productFilter) productFilter.value = '';

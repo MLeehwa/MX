@@ -425,15 +425,48 @@ async function showCurrentLocationsModal() {
     svg.style.border = '2px solid #333';
     svg.style.backgroundColor = 'white';
     
-    // 배경 요소 로드 (localStorage에서)
+    // 배경 요소 로드 (Supabase에서, 없으면 localStorage에서)
     let backgroundElements = [];
     try {
-      const saved = localStorage.getItem('wp1_background_elements');
-      if (saved) {
-        backgroundElements = JSON.parse(saved);
+      // 먼저 Supabase에서 로드 시도
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('wp1_background_elements')
+          .select('elements_data')
+          .eq('id', 1)
+          .single();
+        
+        if (!error && data && data.elements_data) {
+          backgroundElements = Array.isArray(data.elements_data) ? data.elements_data : [];
+          // localStorage에도 백업 저장
+          if (backgroundElements.length > 0) {
+            localStorage.setItem('wp1_background_elements', JSON.stringify(backgroundElements));
+          }
+        } else {
+          // Supabase에 데이터가 없으면 localStorage에서 로드
+          const saved = localStorage.getItem('wp1_background_elements');
+          if (saved) {
+            backgroundElements = JSON.parse(saved);
+          }
+        }
+      } else {
+        // Supabase가 없으면 localStorage에서 로드
+        const saved = localStorage.getItem('wp1_background_elements');
+        if (saved) {
+          backgroundElements = JSON.parse(saved);
+        }
       }
     } catch (e) {
       console.error('배경 요소 로드 실패:', e);
+      // 에러 발생 시 localStorage에서 로드 시도
+      try {
+        const saved = localStorage.getItem('wp1_background_elements');
+        if (saved) {
+          backgroundElements = JSON.parse(saved);
+        }
+      } catch (e2) {
+        console.error('localStorage 로드도 실패:', e2);
+      }
     }
     
     // 배경 요소 렌더링

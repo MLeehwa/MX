@@ -477,11 +477,11 @@ function initializeEventListeners() {
             .eq('id', planId);
           // 3. Items 저장 (Container 단위, remark 포함)
           const items = [{
-            plan_id: planId,
+              plan_id: planId,
             container_no: trailerNo,
-            location_code: location,
-            label_id: crypto.randomUUID(),
-            receiving_place: receivingPlace,
+              location_code: location,
+              label_id: crypto.randomUUID(),
+              receiving_place: receivingPlace,
             remark: remark || null,
           }];
           const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
@@ -516,11 +516,11 @@ function initializeEventListeners() {
             const planId = planData.id;
             // 2. Items 저장 (Container 단위, remark 포함)
             const items = [{
-              plan_id: planId,
+                plan_id: planId,
               container_no: container,
-              location_code: location,
-              label_id: crypto.randomUUID(),
-              receiving_place: receivingPlace,
+                location_code: location,
+                label_id: crypto.randomUUID(),
+                receiving_place: receivingPlace,
               remark: remark || null,
             }];
             const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
@@ -1740,12 +1740,12 @@ async function editPlan(planId) {
     const addPlanForm = document.getElementById('addPlanForm');
     if (addPlanForm) {
       addPlanForm.classList.remove('hidden');
-      renderPlanFormButton();
-      
-      // 폼 제목 변경
-      const formTitle = document.querySelector('#addPlanForm h2');
-      if (formTitle) {
-        formTitle.textContent = '입고 계획 수정';
+    renderPlanFormButton();
+    
+    // 폼 제목 변경
+    const formTitle = document.querySelector('#addPlanForm h2');
+    if (formTitle) {
+      formTitle.textContent = '입고 계획 수정';
       }
     }
     
@@ -1903,7 +1903,7 @@ async function handleSubmitPlan() {
   
   // 필수 필드 검증 통과 후 나머지 로직 진행
   // 위치 코드 정규화 (A1 -> A-01) - 이미 위에서 처리됨
-  // 수동 입력인 경우 위치 유효성 검증
+    // 수동 입력인 경우 위치 유효성 검증
     if (locationInput && !locationInput.classList.contains('hidden') && locationInput.value.trim()) {
       const { data: locData, error: locError } = await window.supabase
         .from('mx_locations')
@@ -1925,8 +1925,8 @@ async function handleSubmitPlan() {
           `입력한 위치 "${location}"는 ${locData.status === 'disabled' ? '사용 불가' : '점검중'} 상태입니다. 다른 위치를 선택해주세요.`
         );
         return;
-      }
     }
+  }
 
   try {
     // 수정 모드인 경우 기존 plan 업데이트
@@ -1969,11 +1969,11 @@ async function handleSubmitPlan() {
       
       // 새 Items 저장 (Container 단위, remark 포함)
       const items = [{
-        plan_id: editingPlanId,
+          plan_id: editingPlanId,
         container_no: containerNo,
-        location_code: location,
-        label_id: crypto.randomUUID(),
-        receiving_place: receivingPlace,
+          location_code: location,
+          label_id: crypto.randomUUID(),
+          receiving_place: receivingPlace,
         remark: remark || null,
       }];
       
@@ -1986,7 +1986,7 @@ async function handleSubmitPlan() {
       );
       
       // 수정 모드 초기화
-  editingPlanId = null;
+      editingPlanId = null;
   const addPlanForm = document.getElementById('addPlanForm');
   if (addPlanForm) addPlanForm.classList.add('hidden');
   
@@ -2014,31 +2014,31 @@ async function handleSubmitPlan() {
       
       await loadPlans(true);
     } else {
-      // 신규 등록 모드
-      let planId;
-      if (type === 'trailer') {
-        // 1. Plan 저장 (trailer_seq 자동 생성)
-        const { data: planData, error: planError } = await window.supabase
+    // 신규 등록 모드
+    let planId;
+    if (type === 'trailer') {
+      // 1. Plan 저장 (trailer_seq 자동 생성)
+      const { data: planData, error: planError } = await window.supabase
           .from('mx_receiving_plan')
-          .insert({
-            type,
-            receive_date: receiveDate,
-          })
-          .select('id, trailer_seq')
-          .single();
-        if (planError) throw planError;
-        planId = planData.id;
+        .insert({
+          type,
+          receive_date: receiveDate,
+        })
+        .select('id, trailer_seq')
+        .single();
+      if (planError) throw planError;
+      planId = planData.id;
         // trailer_seq가 null이거나 undefined인 경우 처리
         if (!planData.trailer_seq || planData.trailer_seq === null) {
           console.error('trailer_seq가 생성되지 않았습니다. 데이터베이스 트리거를 확인하세요.');
           throw new Error('트레일러 번호 생성 실패: trailer_seq가 NULL입니다. 관리자에게 문의하세요.');
         }
-        const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
-        // 2. Plan의 container_no 업데이트
-        await window.supabase
+      const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
+      // 2. Plan의 container_no 업데이트
+      await window.supabase
           .from('mx_receiving_plan')
-          .update({ container_no: trailerNo })
-          .eq('id', planId);
+        .update({ container_no: trailerNo })
+        .eq('id', planId);
         // 3. Items 저장 (Container 단위, remark 포함)
         const items = [{
           plan_id: planId,
@@ -2049,20 +2049,20 @@ async function handleSubmitPlan() {
           remark: remark || null,
         }];
         const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
-        if (itemsError) throw itemsError;
-      } else {
+      if (itemsError) throw itemsError;
+    } else {
         // 컨테이너는 직접 입력
-        const { data: planData, error: planError } = await window.supabase
+      const { data: planData, error: planError } = await window.supabase
           .from('mx_receiving_plan')
-          .insert({
-            type,
-            container_no: container,
-            receive_date: receiveDate,
-          })
-          .select('id, trailer_seq')
-          .single();
-        if (planError) throw planError;
-        planId = planData.id;
+        .insert({
+          type,
+          container_no: container,
+          receive_date: receiveDate,
+        })
+        .select('id, trailer_seq')
+        .single();
+      if (planError) throw planError;
+      planId = planData.id;
         // Items 저장 (Container 단위, remark 포함)
         const items = [{
           plan_id: planId,
@@ -2073,16 +2073,16 @@ async function handleSubmitPlan() {
           remark: remark || null,
         }];
         const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
-        if (itemsError) throw itemsError;
-      }
-      showMessage(
-        formatMessage('modal_message_title'),
-        formatMessage('msg_saved')
-      );
-      
-      // 수정 모드 초기화
-      editingPlanId = null;
-      
+      if (itemsError) throw itemsError;
+    }
+    showMessage(
+      formatMessage('modal_message_title'),
+      formatMessage('msg_saved')
+    );
+    
+    // 수정 모드 초기화
+    editingPlanId = null;
+    
       const addPlanForm = document.getElementById('addPlanForm');
       if (addPlanForm) addPlanForm.classList.add('hidden');
       
@@ -2099,22 +2099,22 @@ async function handleSubmitPlan() {
       const remarkInput = document.getElementById("remarkInput");
       if (remarkSelect) remarkSelect.value = '';
       if (remarkInput) remarkInput.value = '';
-      
-      // 입고처 필드 초기화
-      const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
-      const receivingPlaceInput = document.getElementById('receivingPlaceInput');
-      if (receivingPlaceSelect) {
-        receivingPlaceSelect.value = '';
-        receivingPlaceSelect.classList.remove('hidden');
-      }
-      if (receivingPlaceInput) {
-        receivingPlaceInput.value = '';
-        receivingPlaceInput.classList.add('hidden');
-      }
-      
+    
+    // 입고처 필드 초기화
+    const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
+    const receivingPlaceInput = document.getElementById('receivingPlaceInput');
+    if (receivingPlaceSelect) {
+      receivingPlaceSelect.value = '';
+      receivingPlaceSelect.classList.remove('hidden');
+    }
+    if (receivingPlaceInput) {
+      receivingPlaceInput.value = '';
+      receivingPlaceInput.classList.add('hidden');
+    }
+    
       const receiveDateInput = document.getElementById('receiveDateInput');
       if (receiveDateInput) receiveDateInput.value = '';
-      await loadPlans(true);
+    await loadPlans(true);
     }
   } catch (error) {
     console.error('Error:', error);
@@ -2550,17 +2550,19 @@ async function showLocationMapModal() {
         const containerNo = String(item.container_no);
         // 출고되지 않은 항목의 위치만 점유로 간주
         if (!shippedContainerNos.has(containerNo)) {
-          const normalizedCode = normalizeLocationCode(item.location_code);
-          occupiedLocations.add(normalizedCode);
+        const normalizedCode = normalizeLocationCode(item.location_code);
+        occupiedLocations.add(normalizedCode);
         }
       }
     });
     
-    // 4. SVG 생성
+    // 4. SVG 생성 (가로는 10% 줄임: 900, 세로는 20% 줄임: 640, viewBox는 좌표계이므로 유지)
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '1000');
-    svg.setAttribute('height', '800');
+    svg.setAttribute('width', '900');
+    svg.setAttribute('height', '640');
     svg.setAttribute('viewBox', '0 0 1000 800');
+    svg.style.maxWidth = '100%';
+    svg.style.height = 'auto';
     svg.style.border = '2px solid #333';
     svg.style.backgroundColor = 'white';
     

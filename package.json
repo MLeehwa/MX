@@ -1,11 +1,12 @@
 {
-  "name": "lhw-wp1-project",
-  "version": "1.0.0",
-  "description": "Warehouse Management System",
+  "name": "mx-wms-system",
+  "version": "2.0.0",
+  "description": "MX Warehouse Management System - Container Unit Based",
   "scripts": {
     "dev": "live-server --port=3000 --open=/index.html",
     "start": "live-server --port=3000 --open=/index.html",
-    "serve": "http-server -p 3000 -o"
+    "serve": "http-server -p 3000 -o",
+    "build": "echo 'No build step required for static site'"
   },
   "devDependencies": {
     "live-server": "^1.2.2",

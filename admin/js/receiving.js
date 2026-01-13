@@ -392,17 +392,7 @@ function initializeEventListeners() {
       });
     }
 
-    if (addItemBtn) {
-      addItemBtn.addEventListener('click', () => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'grid grid-cols-2 gap-4';
-        itemDiv.innerHTML = `
-          <input type="text" placeholder="Part No." class="part-input border rounded px-3 py-2" />
-          <input type="number" placeholder="Quantity" class="qty-input border rounded px-3 py-2" />
-        `;
-        itemList.appendChild(itemDiv);
-      });
-    }
+    // Container 단위이므로 addItemBtn은 더 이상 필요 없음 (제거)
 
     // 최초 입력란에도 class 추가 (이미 있다면 중복 추가 X)
     if (itemList) {
@@ -436,19 +426,31 @@ function initializeEventListeners() {
         }
         
         const receiveDate = document.getElementById("receiveDateInput").value;
-        const parts = Array.from(document.querySelectorAll(".part-input")).map(el => el.value.trim());
-        const qtys = Array.from(document.querySelectorAll(".qty-input")).map(el => parseInt(el.value));
+        // 제품 정보 값 가져오기 (드롭다운 또는 직접 입력)
+        const remarkSelect = document.getElementById("remarkSelect");
+        const remarkInput = document.getElementById("remarkInput");
+        let remark = '';
+        
+        if (remarkSelect && !remarkSelect.classList.contains('hidden') && remarkSelect.value) {
+          remark = remarkSelect.value.trim();
+        } else if (remarkInput && !remarkInput.classList.contains('hidden')) {
+          remark = remarkInput.value.trim();
+        }
 
-        // 입력값 검증
-        if (parts.length === 0 || qtys.length === 0 || parts.some(p => !p) || qtys.some(q => !q || isNaN(q))) {
-          alert('모든 품번과 수량을 입력하세요.');
+        // 필수 필드 검증 (Container 번호와 입고일)
+        if (!container && type === 'container') {
+          alert('컨테이너 번호를 입력하세요.');
+          return;
+        }
+        if (!receiveDate) {
+          alert('입고 예정일을 선택하세요.');
           return;
         }
 
         if (type === 'trailer') {
           // 1. Plan 저장 (trailer_seq 자동 생성)
           const { data: planData, error: planError } = await window.supabase
-            .from('receiving_plan')
+            .from('mx_receiving_plan')
             .insert({
               type,
               receive_date: receiveDate,
@@ -460,27 +462,29 @@ function initializeEventListeners() {
             return;
           }
           const planId = planData.id;
+          // trailer_seq가 null이거나 undefined인 경우 처리
+          if (!planData.trailer_seq || planData.trailer_seq === null) {
+            console.error('trailer_seq가 생성되지 않았습니다. 데이터베이스 트리거를 확인하세요.');
+            alert('트레일러 번호 생성 실패: trailer_seq가 NULL입니다. 관리자에게 문의하세요.');
+            return;
+          }
           // 5자리 패딩
           const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
           // 2. Plan의 container_no 업데이트
           await window.supabase
-            .from('receiving_plan')
+            .from('mx_receiving_plan')
             .update({ container_no: trailerNo })
             .eq('id', planId);
-          // 3. Items 저장
-          const items = [];
-          for (let i = 0; i < parts.length; i++) {
-            items.push({
-              plan_id: planId,
-              part_no: parts[i],
-              quantity: qtys[i],
-              location_code: location,
-              label_id: crypto.randomUUID(),
-              container_no: trailerNo,
-              receiving_place: receivingPlace,
-            });
-          }
-          const { error: itemsError } = await window.supabase.from('receiving_items').insert(items);
+          // 3. Items 저장 (Container 단위, remark 포함)
+          const items = [{
+            plan_id: planId,
+            container_no: trailerNo,
+            location_code: location,
+            label_id: crypto.randomUUID(),
+            receiving_place: receivingPlace,
+            remark: remark || null,
+          }];
+          const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
           if (itemsError) {
             alert('Items 저장 실패: ' + itemsError.message);
             return;
@@ -489,13 +493,18 @@ function initializeEventListeners() {
           addPlanForm.classList.add("hidden");
           itemList.innerHTML = "";
           containerInput.value = trailerNo; // 실제 부여된 번호를 입력란에 표시
+          // remark 필드 초기화
+          const remarkSelect = document.getElementById("remarkSelect");
+          const remarkInput = document.getElementById("remarkInput");
+          if (remarkSelect) remarkSelect.value = '';
+          if (remarkInput) remarkInput.value = '';
           loadPlans();
         } else {
-          // 컨테이너는 기존 방식(직접 입력/수정)
+          // 컨테이너는 직접 입력
           try {
             // 1. Plan 저장
             const { data: planData, error: planError } = await window.supabase
-              .from('receiving_plan')
+              .from('mx_receiving_plan')
               .insert({
                 type,
                 container_no: container,
@@ -505,24 +514,25 @@ function initializeEventListeners() {
               .single();
             if (planError) throw planError;
             const planId = planData.id;
-            // 2. Items 저장
-            const items = [];
-            for (let i = 0; i < parts.length; i++) {
-              items.push({
-                plan_id: planId,
-                part_no: parts[i],
-                quantity: qtys[i],
-                location_code: location,
-                label_id: crypto.randomUUID(),
-                container_no: container,
-                receiving_place: receivingPlace,
-              });
-            }
-            const { error: itemsError } = await window.supabase.from('receiving_items').insert(items);
+            // 2. Items 저장 (Container 단위, remark 포함)
+            const items = [{
+              plan_id: planId,
+              container_no: container,
+              location_code: location,
+              label_id: crypto.randomUUID(),
+              receiving_place: receivingPlace,
+              remark: remark || null,
+            }];
+            const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
             if (itemsError) throw itemsError;
             alert('Saved!');
             addPlanForm.classList.add("hidden");
             itemList.innerHTML = "";
+            // remark 필드 초기화
+            const remarkSelect = document.getElementById("remarkSelect");
+            const remarkInput = document.getElementById("remarkInput");
+            if (remarkSelect) remarkSelect.value = '';
+            if (remarkInput) remarkInput.value = '';
             loadPlans();
           } catch (error) {
             console.error('Error:', error);
@@ -598,10 +608,10 @@ async function loadPlans(applyFilter = false) {
       
       // 1. 오늘 날짜인 계획 조회
       const { data: todayPlans, error: todayError } = await window.supabase
-        .from('receiving_plan')
+        .from('mx_receiving_plan')
         .select(`
           *,
-          receiving_items (*)
+          mx_receiving_items (*)
         `)
         .eq('receive_date', today)
         .order('id', { ascending: false });
@@ -614,10 +624,10 @@ async function loadPlans(applyFilter = false) {
       const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
       
       const { data: pastPlans, error: pastError } = await window.supabase
-        .from('receiving_plan')
+        .from('mx_receiving_plan')
         .select(`
           *,
-          receiving_items (*)
+          mx_receiving_items (*)
         `)
         .lt('receive_date', today)
         .gte('receive_date', thirtyDaysAgoStr)
@@ -627,7 +637,7 @@ async function loadPlans(applyFilter = false) {
 
       // 3. receiving_log 조회하여 입고 확정된 label_id 확인
       const { data: logs, error: logError } = await window.supabase
-        .from('receiving_log')
+        .from('mx_receiving_log')
         .select('label_id');
       
       if (logError) throw logError;
@@ -635,7 +645,7 @@ async function loadPlans(applyFilter = false) {
 
       // 4. 과거 계획 중 입고 확정이 안 된 것만 필터링
       const unconfirmedPastPlans = (pastPlans || []).filter(plan => {
-        const items = (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : [];
+        const items = (plan && Array.isArray(plan.mx_receiving_items)) ? plan.mx_receiving_items : [];
         // 모든 items가 입고 확정되지 않은 경우만 포함
         return items.length > 0 && items.some(item => !receivedLabelIds.has(String(item.label_id)));
       });
@@ -649,9 +659,9 @@ async function loadPlans(applyFilter = false) {
       if (allPlans.length === 0) {
         planListBody.innerHTML = `
           <tr>
-            <td colspan="13" class="text-center py-4 text-muted">
+            <td colspan="11" class="text-center py-4 text-muted">
               <i class="fas fa-info-circle me-2"></i>
-              데이터가 없습니다. 테스트 데이터를 생성해보세요.
+              데이터가 없습니다.
             </td>
           </tr>
         `;
@@ -669,7 +679,7 @@ async function loadPlans(applyFilter = false) {
       console.error('최근 데이터 로드 실패:', error);
       planListBody.innerHTML = `
         <tr>
-          <td colspan="13" class="text-center py-4 text-muted">
+          <td colspan="11" class="text-center py-4 text-muted">
             <i class="fas fa-search me-2"></i>
             ${formatMessage('msg_click_search')}
           </td>
@@ -706,10 +716,10 @@ async function loadPlans(applyFilter = false) {
 
     // 2. plan, item 데이터 불러오기
     const { data: plans, error } = await window.supabase
-      .from('receiving_plan')
+      .from('mx_receiving_plan')
       .select(`
         *,
-        receiving_items (*)
+          mx_receiving_items (*)
       `)
       .gte('receive_date', startDate)
       .lte('receive_date', endDate)
@@ -720,7 +730,7 @@ async function loadPlans(applyFilter = false) {
     if (!plans || plans.length === 0) {
       planListBody.innerHTML = `
         <tr>
-          <td colspan="13" class="text-center py-4 text-muted">
+          <td colspan="11" class="text-center py-4 text-muted">
             <i class="fas fa-info-circle me-2"></i>
             ${formatMessage('msg_no_plans')}
           </td>
@@ -736,7 +746,7 @@ async function loadPlans(applyFilter = false) {
     currentPlans = plans;
     currentItems = new Map();
     for (const plan of plans) {
-      currentItems.set(plan.id, (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : []);
+      currentItems.set(plan.id, (plan && Array.isArray(plan.mx_receiving_items)) ? plan.mx_receiving_items : []);
     }
 
     // 데이터 표시 함수 호출
@@ -905,7 +915,7 @@ async function handleDelete(event) {
   console.log('Deleting plan with ID:', id);
   
   try {
-    const { error } = await window.supabase.from("receiving_plan").delete().eq("id", id);
+    const { error } = await window.supabase.from("mx_receiving_plan").delete().eq("id", id);
     if (error) {
       console.error('Supabase delete error:', error);
       throw error;
@@ -935,7 +945,7 @@ exportBtn.className = "bg-gray-600 text-white px-4 py-2 rounded ml-4";
 document.getElementById("searchPlanBtn")?.after(exportBtn);
 exportBtn.addEventListener("click", async () => {
     console.log('Export CSV button clicked');
-    const { data, error } = await window.supabase.from("receiving_plan").select("*");
+    const { data, error } = await window.supabase.from("mx_receiving_plan").select("*");
     if (error) {
         console.error('Error loading data for CSV:', error);
         alert("Error loading data: " + error.message);
@@ -991,14 +1001,14 @@ function initializePrintButton() {
           if (!planId) continue;
           // plan 정보
           const { data: plan, error: planError } = await window.supabase
-            .from('receiving_plan')
+            .from('mx_receiving_plan')
             .select('*')
             .eq('id', planId)
             .single();
           if (planError || !plan) continue;
           // items 정보 (plan_id로 조회)
           const { data: items, error: itemsError } = await window.supabase
-            .from('receiving_items')
+            .from('mx_receiving_items')
             .select('*')
             .eq('plan_id', planId);
           if (itemsError || !items || items.length === 0) continue;
@@ -1010,13 +1020,11 @@ function initializePrintButton() {
                 <div style='font-size:50px;font-weight:bold;margin-bottom:20px;'>RECEIVING DATE: <span style="font-weight:normal;">${plan.receive_date}</span></div>
                 <table style="font-size:45px;font-weight:bold;margin-bottom:30px;text-align:center;border-collapse:collapse;width:100%;">
                   <tr>
-                    <th style="border:2px solid #000;padding:8px 16px;">PART NO</th>
-                    <th style="border:2px solid #000;padding:8px 16px;">QTY</th>
+                    <th style="border:2px solid #000;padding:8px 16px;">제품 정보</th>
                   </tr>
                   ${items.map(item => `
                     <tr>
-                      <td style="border:2px solid #000;padding:8px 16px;font-weight:normal;">${item.part_no}</td>
-                      <td style="border:2px solid #000;padding:8px 16px;font-weight:normal;">${item.quantity}</td>
+                      <td style="border:2px solid #000;padding:8px 16px;font-weight:normal;">${item.remark || '-'}</td>
                     </tr>
                   `).join('')}
                 </table>
@@ -1144,7 +1152,10 @@ export async function initSection() {
         if (hideReceivingPlaceBtn) hideReceivingPlaceBtn.classList.add('hidden');
         
         // 품목 목록 초기화
-        document.getElementById('itemList').innerHTML = '';
+        const itemList = document.getElementById('itemList');
+        if (itemList) {
+          itemList.innerHTML = '';
+        }
         
         // 자동 위치 체크박스 초기화
         const autoLocationCheckbox = document.getElementById('autoLocationCheckbox');
@@ -1171,6 +1182,8 @@ export async function initSection() {
           setupLocationDropdownToggle();
           attachAutoLocationCheckboxListener();
           setupReceivingPlaceToggle();
+          setupRemarkToggle();
+          loadExistingRemarks();
           // 드롭다운이 기본이므로 초기 로드
           await loadAvailableLocationsDropdown();
         }, 100);
@@ -1305,7 +1318,7 @@ if (searchPlanBtn) {
       `;
       // supabase-js로 데이터 조회
       const { data, error } = await window.supabase
-        .from('receiving_plan')
+        .from('mx_receiving_plan')
         .select('*')
         .gte('receive_date', startDate)
         .lte('receive_date', endDate)
@@ -1517,7 +1530,7 @@ async function forceReceiveMultiple(labelIds, receiveDate) {
   for (const labelId of labelIds) {
     // 이미 입고된 항목은 건너뜀
     const { data: logData } = await window.supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .select('id')
       .eq('label_id', labelId);
       
@@ -1527,10 +1540,9 @@ async function forceReceiveMultiple(labelIds, receiveDate) {
     }
     
     try {
-      const { error: insertError } = await window.supabase.from('receiving_log').insert({
+      const { error: insertError } = await window.supabase.from('mx_receiving_log').insert({
         label_id: labelId,
-        received_at: receiveDate.toISOString(),
-        confirmed_by: 'admin' // CONFIG.USER_INFO.name 대신 'admin' 사용
+        received_at: receiveDate.toISOString()
       });
       
       if (insertError) throw insertError;
@@ -1575,10 +1587,10 @@ async function editPlan(planId) {
   try {
     // Plan과 Items 조회
     const { data: plan, error: planError } = await window.supabase
-      .from('receiving_plan')
+      .from('mx_receiving_plan')
       .select(`
         *,
-        receiving_items (*)
+          mx_receiving_items (*)
       `)
       .eq('id', planId)
       .single();
@@ -1595,11 +1607,11 @@ async function editPlan(planId) {
     
     // 입고 완료 여부 확인
     const { data: logs } = await window.supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .select('label_id');
     
     const receivedLabelIds = new Set((logs || []).map(l => String(l.label_id)));
-    const items = plan.receiving_items || [];
+    const items = plan.mx_receiving_items || [];
     const allReceived = items.length > 0 && items.every(i => receivedLabelIds.has(String(i.label_id)));
     
     if (allReceived) {
@@ -1663,8 +1675,8 @@ async function editPlan(planId) {
       const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
       const receivingPlaceInput = document.getElementById('receivingPlaceInput');
       
-      // PTA 또는 PORT인지 확인
-      if (receivingPlace === 'PTA' || receivingPlace === 'PORT') {
+      // Logis, PTM, Port 중 하나인지 확인
+      if (receivingPlace === 'Logis' || receivingPlace === 'PTM' || receivingPlace === 'Port') {
         if (receivingPlaceSelect) {
           receivingPlaceSelect.value = receivingPlace;
           receivingPlaceSelect.classList.remove('hidden');
@@ -1690,25 +1702,51 @@ async function editPlan(planId) {
     
     // 품목 목록 설정
     const itemList = document.getElementById('itemList');
-    itemList.innerHTML = '';
-    items.forEach(item => {
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'grid grid-cols-2 gap-4';
-      itemDiv.innerHTML = `
-        <input type="text" placeholder="Part No." class="part-input border rounded px-3 py-2" value="${item.part_no || ''}" />
-        <input type="number" placeholder="Quantity" class="qty-input border rounded px-3 py-2" value="${item.quantity || ''}" />
-      `;
-      itemList.appendChild(itemDiv);
-    });
+    if (itemList) itemList.innerHTML = '';
+    // remark 필드에 값 설정 (첫 번째 item의 remark 사용)
+    if (items.length > 0 && items[0].remark) {
+      const remark = items[0].remark;
+      const remarkSelect = document.getElementById('remarkSelect');
+      const remarkInput = document.getElementById('remarkInput');
+      
+      // 기존 remark 값이 드롭다운에 있는지 확인
+      if (remarkSelect) {
+        const optionExists = Array.from(remarkSelect.options).some(opt => opt.value === remark);
+        if (optionExists) {
+          // 드롭다운에 있으면 드롭다운 사용
+          remarkSelect.value = remark;
+          remarkSelect.classList.remove('hidden');
+          if (remarkInput) remarkInput.classList.add('hidden');
+          const showRemarkBtn = document.getElementById('showRemarkInputBtn');
+          const hideRemarkBtn = document.getElementById('hideRemarkInputBtn');
+          if (showRemarkBtn) showRemarkBtn.classList.remove('hidden');
+          if (hideRemarkBtn) hideRemarkBtn.classList.add('hidden');
+        } else {
+          // 드롭다운에 없으면 직접 입력 필드 사용
+          if (remarkInput) {
+            remarkInput.value = remark;
+            remarkInput.classList.remove('hidden');
+            if (remarkSelect) remarkSelect.classList.add('hidden');
+          }
+          const showRemarkBtn = document.getElementById('showRemarkInputBtn');
+          const hideRemarkBtn = document.getElementById('hideRemarkInputBtn');
+          if (showRemarkBtn) showRemarkBtn.classList.add('hidden');
+          if (hideRemarkBtn) hideRemarkBtn.classList.remove('hidden');
+        }
+      }
+    }
     
     // 폼 표시
-    document.getElementById('addPlanForm').classList.remove('hidden');
-    renderPlanFormButton();
-    
-    // 폼 제목 변경
-    const formTitle = document.querySelector('#addPlanForm h2');
-    if (formTitle) {
-      formTitle.textContent = '입고 계획 수정';
+    const addPlanForm = document.getElementById('addPlanForm');
+    if (addPlanForm) {
+      addPlanForm.classList.remove('hidden');
+      renderPlanFormButton();
+      
+      // 폼 제목 변경
+      const formTitle = document.querySelector('#addPlanForm h2');
+      if (formTitle) {
+        formTitle.textContent = '입고 계획 수정';
+      }
     }
     
     // 폼이 열릴 때 드롭다운 이벤트 리스너 다시 설정
@@ -1733,10 +1771,17 @@ async function editPlan(planId) {
 function cancelEditPlan() {
   editingPlanId = null;
   document.getElementById('addPlanForm').classList.add('hidden');
-  document.getElementById('itemList').innerHTML = '';
-  document.getElementById('containerInput').value = '';
-  document.getElementById('locationInput').value = '';
-  document.getElementById('receiveDateInput').value = '';
+  const itemList = document.getElementById('itemList');
+  if (itemList) itemList.innerHTML = '';
+  
+  const containerInput = document.getElementById('containerInput');
+  if (containerInput) containerInput.value = '';
+  
+  const locationInput = document.getElementById('locationInput');
+  if (locationInput) locationInput.value = '';
+  
+  const receiveDateInput = document.getElementById('receiveDateInput');
+  if (receiveDateInput) receiveDateInput.value = '';
   
   // 입고처 필드 초기화
   const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
@@ -1796,11 +1841,31 @@ window.handleSubmitPlan = handleSubmitPlan;
 // 신규 등록 핸들러
 async function handleSubmitPlan() {
   // 필수 필드 검증
+  const type = document.getElementById("typeSelect").value;
+  let container = document.getElementById("containerInput").value.trim();
   const receiveDate = document.getElementById("receiveDateInput").value;
+  const locationSelect = document.getElementById("locationSelect");
+  const locationInput = document.getElementById("locationInput");
+  // 드롭다운 또는 입력란에서 위치 가져오기
+  let location = (locationSelect && !locationSelect.classList.contains('hidden') && locationSelect.value) 
+    ? locationSelect.value.trim() 
+    : locationInput.value.trim();
+  // 위치 코드 정규화 (A1 -> A-01)
+  if (location) {
+    location = normalizeLocationCode(location);
+  }
   const receivingPlaceSelect = document.getElementById("receivingPlaceSelect");
   const receivingPlaceInput = document.getElementById("receivingPlaceInput");
-  const parts = Array.from(document.querySelectorAll(".part-input")).map(el => el.value.trim());
-  const qtys = Array.from(document.querySelectorAll(".qty-input")).map(el => parseInt(el.value));
+  // remark 가져오기 (선택사항) - 드롭다운 또는 직접 입력
+  const remarkSelect = document.getElementById("remarkSelect");
+  const remarkInput = document.getElementById("remarkInput");
+  let remark = '';
+  
+  if (remarkSelect && !remarkSelect.classList.contains('hidden') && remarkSelect.value) {
+    remark = remarkSelect.value.trim();
+  } else if (remarkInput && !remarkInput.classList.contains('hidden')) {
+    remark = remarkInput.value.trim();
+  }
   
   // 1. 날짜 검증
   if (!receiveDate || receiveDate.trim() === '') {
@@ -1827,48 +1892,21 @@ async function handleSubmitPlan() {
     return;
   }
   
-  // 3. 입고 품목 검증
-  if (parts.length === 0 || qtys.length === 0) {
+  // 3. Container 번호 검증 (container 타입인 경우)
+  if (type === 'container' && (!container || container.trim() === '')) {
     showMessage(
       formatMessage('modal_message_title'),
-      '최소 1개 이상의 입고 품목을 추가해주세요.'
-    );
-    return;
-  }
-  
-  if (parts.some(p => !p || p.trim() === '')) {
-    showMessage(
-      formatMessage('modal_message_title'),
-      '모든 품목의 Part No.를 입력해주세요.'
-    );
-    return;
-  }
-  
-  if (qtys.some(q => !q || isNaN(q) || q <= 0)) {
-    showMessage(
-      formatMessage('modal_message_title'),
-      '모든 품목의 수량을 올바르게 입력해주세요. (1 이상의 숫자)'
+      '컨테이너 번호를 입력해주세요.'
     );
     return;
   }
   
   // 필수 필드 검증 통과 후 나머지 로직 진행
-  const type = document.getElementById("typeSelect").value;
-  let container = document.getElementById("containerInput").value.trim();
-  const locationSelect = document.getElementById("locationSelect");
-  const locationInput = document.getElementById("locationInput");
-  // 드롭다운 또는 입력란에서 위치 가져오기
-  let location = (locationSelect && !locationSelect.classList.contains('hidden') && locationSelect.value) 
-    ? locationSelect.value.trim() 
-    : locationInput.value.trim();
-  // 위치 코드 정규화 (A1 -> A-01)
-  if (location) {
-    location = normalizeLocationCode(location);
-    
-    // 수동 입력인 경우 위치 유효성 검증
+  // 위치 코드 정규화 (A1 -> A-01) - 이미 위에서 처리됨
+  // 수동 입력인 경우 위치 유효성 검증
     if (locationInput && !locationInput.classList.contains('hidden') && locationInput.value.trim()) {
       const { data: locData, error: locError } = await window.supabase
-        .from('wp1_locations')
+        .from('mx_locations')
         .select('status')
         .eq('location_code', location)
         .single();
@@ -1889,14 +1927,13 @@ async function handleSubmitPlan() {
         return;
       }
     }
-  }
 
   try {
     // 수정 모드인 경우 기존 plan 업데이트
     if (editingPlanId) {
       // 기존 items 삭제
       await window.supabase
-        .from('receiving_items')
+        .from('mx_receiving_items')
         .delete()
         .eq('plan_id', editingPlanId);
       
@@ -1911,7 +1948,7 @@ async function handleSubmitPlan() {
       }
       
       const { error: updateError } = await window.supabase
-        .from('receiving_plan')
+        .from('mx_receiving_plan')
         .update(updateData)
         .eq('id', editingPlanId);
       
@@ -1921,7 +1958,7 @@ async function handleSubmitPlan() {
       let containerNo = container;
       if (type === 'trailer') {
         const { data: existingPlan } = await window.supabase
-          .from('receiving_plan')
+          .from('mx_receiving_plan')
           .select('container_no, trailer_seq')
           .eq('id', editingPlanId)
           .single();
@@ -1930,21 +1967,17 @@ async function handleSubmitPlan() {
         }
       }
       
-      // 새 Items 저장
-      const items = [];
-      for (let i = 0; i < parts.length; i++) {
-        items.push({
-          plan_id: editingPlanId,
-          part_no: parts[i],
-          quantity: qtys[i],
-          location_code: location,
-          label_id: crypto.randomUUID(),
-          container_no: containerNo,
-          receiving_place: receivingPlace,
-        });
-      }
+      // 새 Items 저장 (Container 단위, remark 포함)
+      const items = [{
+        plan_id: editingPlanId,
+        container_no: containerNo,
+        location_code: location,
+        label_id: crypto.randomUUID(),
+        receiving_place: receivingPlace,
+        remark: remark || null,
+      }];
       
-      const { error: itemsError } = await window.supabase.from('receiving_items').insert(items);
+      const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
       if (itemsError) throw itemsError;
       
       showMessage(
@@ -1953,12 +1986,19 @@ async function handleSubmitPlan() {
       );
       
       // 수정 모드 초기화
-      editingPlanId = null;
-      document.getElementById('addPlanForm').classList.add('hidden');
-      document.getElementById('itemList').innerHTML = '';
+  editingPlanId = null;
+  const addPlanForm = document.getElementById('addPlanForm');
+  if (addPlanForm) addPlanForm.classList.add('hidden');
+  
+  const itemList = document.getElementById('itemList');
       document.getElementById('containerInput').value = '';
       document.getElementById('locationInput').value = '';
       document.getElementById('receiveDateInput').value = '';
+      // remark 필드 초기화
+      const remarkSelect = document.getElementById("remarkSelect");
+      const remarkInput = document.getElementById("remarkInput");
+      if (remarkSelect) remarkSelect.value = '';
+      if (remarkInput) remarkInput.value = '';
       
       // 입고처 필드 초기화
       const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
@@ -1973,100 +2013,109 @@ async function handleSubmitPlan() {
       }
       
       await loadPlans(true);
-      return;
-    }
-    
-    // 신규 등록 모드
-    let planId;
-    if (type === 'trailer') {
-      // 1. Plan 저장 (trailer_seq 자동 생성)
-      const { data: planData, error: planError } = await window.supabase
-        .from('receiving_plan')
-        .insert({
-          type,
-          receive_date: receiveDate,
-        })
-        .select('id, trailer_seq')
-        .single();
-      if (planError) throw planError;
-      planId = planData.id;
-      const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
-      // 2. Plan의 container_no 업데이트
-      await window.supabase
-        .from('receiving_plan')
-        .update({ container_no: trailerNo })
-        .eq('id', planId);
-      // 3. Items 저장
-      const items = [];
-      for (let i = 0; i < parts.length; i++) {
-        items.push({
-          plan_id: planId,
-          part_no: parts[i],
-          quantity: qtys[i],
-          location_code: location,
-          label_id: crypto.randomUUID(),
-          container_no: trailerNo,
-          receiving_place: receivingPlace,
-        });
-      }
-      const { error: itemsError } = await window.supabase.from('receiving_items').insert(items);
-      if (itemsError) throw itemsError;
     } else {
-      // 컨테이너는 기존 방식(직접 입력/수정)
-      const { data: planData, error: planError } = await window.supabase
-        .from('receiving_plan')
-        .insert({
-          type,
-          container_no: container,
-          receive_date: receiveDate,
-        })
-        .select('id, trailer_seq')
-        .single();
-      if (planError) throw planError;
-      planId = planData.id;
-      // Items 저장
-      const items = [];
-      for (let i = 0; i < parts.length; i++) {
-        items.push({
+      // 신규 등록 모드
+      let planId;
+      if (type === 'trailer') {
+        // 1. Plan 저장 (trailer_seq 자동 생성)
+        const { data: planData, error: planError } = await window.supabase
+          .from('mx_receiving_plan')
+          .insert({
+            type,
+            receive_date: receiveDate,
+          })
+          .select('id, trailer_seq')
+          .single();
+        if (planError) throw planError;
+        planId = planData.id;
+        // trailer_seq가 null이거나 undefined인 경우 처리
+        if (!planData.trailer_seq || planData.trailer_seq === null) {
+          console.error('trailer_seq가 생성되지 않았습니다. 데이터베이스 트리거를 확인하세요.');
+          throw new Error('트레일러 번호 생성 실패: trailer_seq가 NULL입니다. 관리자에게 문의하세요.');
+        }
+        const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
+        // 2. Plan의 container_no 업데이트
+        await window.supabase
+          .from('mx_receiving_plan')
+          .update({ container_no: trailerNo })
+          .eq('id', planId);
+        // 3. Items 저장 (Container 단위, remark 포함)
+        const items = [{
           plan_id: planId,
-          part_no: parts[i],
-          quantity: qtys[i],
+          container_no: trailerNo,
           location_code: location,
           label_id: crypto.randomUUID(),
-          container_no: container,
           receiving_place: receivingPlace,
-        });
+          remark: remark || null,
+        }];
+        const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
+        if (itemsError) throw itemsError;
+      } else {
+        // 컨테이너는 직접 입력
+        const { data: planData, error: planError } = await window.supabase
+          .from('mx_receiving_plan')
+          .insert({
+            type,
+            container_no: container,
+            receive_date: receiveDate,
+          })
+          .select('id, trailer_seq')
+          .single();
+        if (planError) throw planError;
+        planId = planData.id;
+        // Items 저장 (Container 단위, remark 포함)
+        const items = [{
+          plan_id: planId,
+          container_no: container,
+          location_code: location,
+          label_id: crypto.randomUUID(),
+          receiving_place: receivingPlace,
+          remark: remark || null,
+        }];
+        const { error: itemsError } = await window.supabase.from('mx_receiving_items').insert(items);
+        if (itemsError) throw itemsError;
       }
-      const { error: itemsError } = await window.supabase.from('receiving_items').insert(items);
-      if (itemsError) throw itemsError;
+      showMessage(
+        formatMessage('modal_message_title'),
+        formatMessage('msg_saved')
+      );
+      
+      // 수정 모드 초기화
+      editingPlanId = null;
+      
+      const addPlanForm = document.getElementById('addPlanForm');
+      if (addPlanForm) addPlanForm.classList.add('hidden');
+      
+      const itemList = document.getElementById('itemList');
+      if (itemList) itemList.innerHTML = '';
+      
+      const containerInput = document.getElementById('containerInput');
+      if (containerInput) containerInput.value = '';
+      
+      const locationInput = document.getElementById('locationInput');
+      if (locationInput) locationInput.value = '';
+      // remark 필드 초기화
+      const remarkSelect = document.getElementById("remarkSelect");
+      const remarkInput = document.getElementById("remarkInput");
+      if (remarkSelect) remarkSelect.value = '';
+      if (remarkInput) remarkInput.value = '';
+      
+      // 입고처 필드 초기화
+      const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
+      const receivingPlaceInput = document.getElementById('receivingPlaceInput');
+      if (receivingPlaceSelect) {
+        receivingPlaceSelect.value = '';
+        receivingPlaceSelect.classList.remove('hidden');
+      }
+      if (receivingPlaceInput) {
+        receivingPlaceInput.value = '';
+        receivingPlaceInput.classList.add('hidden');
+      }
+      
+      const receiveDateInput = document.getElementById('receiveDateInput');
+      if (receiveDateInput) receiveDateInput.value = '';
+      await loadPlans(true);
     }
-    showMessage(
-      formatMessage('modal_message_title'),
-      formatMessage('msg_saved')
-    );
-    
-    // 수정 모드 초기화
-    editingPlanId = null;
-    
-    document.getElementById('addPlanForm').classList.add('hidden');
-    document.getElementById('itemList').innerHTML = '';
-    document.getElementById('containerInput').value = '';
-    document.getElementById('locationInput').value = '';
-    
-    // 입고처 필드 초기화
-    const receivingPlaceSelect = document.getElementById('receivingPlaceSelect');
-    const receivingPlaceInput = document.getElementById('receivingPlaceInput');
-    if (receivingPlaceSelect) {
-      receivingPlaceSelect.value = '';
-      receivingPlaceSelect.classList.remove('hidden');
-    }
-    if (receivingPlaceInput) {
-      receivingPlaceInput.value = '';
-      receivingPlaceInput.classList.add('hidden');
-    }
-    
-    document.getElementById('receiveDateInput').value = '';
-    await loadPlans(true);
   } catch (error) {
     console.error('Error:', error);
     showMessage(
@@ -2135,7 +2184,7 @@ async function loadLocations() {
   const tbody = document.querySelector('#locationTable tbody');
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
-  const { data, error } = await window.supabase.from('wp1_locations').select('*').order('location_code');
+  const { data, error } = await window.supabase.from('mx_locations').select('*').order('location_code');
   if (error) {
     tbody.innerHTML = `<tr><td colspan="4" class="text-red-600">Error: ${error.message}</td></tr>`;
     return;
@@ -2176,7 +2225,7 @@ if (addLocationForm) {
     // 위치 코드 정규화 (A1 -> A-01)
     location_code = normalizeLocationCode(location_code);
     
-    const { error } = await window.supabase.from('wp1_locations').insert({ location_code, status, remark });
+    const { error } = await window.supabase.from('mx_locations').insert({ location_code, status, remark });
     if (error) return alert('등록 실패: ' + error.message);
     addLocationForm.reset();
     loadLocations();
@@ -2192,13 +2241,13 @@ if (locationTable) {
       // 수정
       const status = locationTable.querySelector(`select.statusEdit[data-id='${id}']`).value;
       const remark = locationTable.querySelector(`input.remarkEdit[data-id='${id}']`).value;
-      const { error } = await window.supabase.from('wp1_locations').update({ status, remark }).eq('id', id);
+      const { error } = await window.supabase.from('mx_locations').update({ status, remark }).eq('id', id);
       if (error) return alert('수정 실패: ' + error.message);
       loadLocations();
     } else if (e.target.classList.contains('deleteLocBtn')) {
       // 삭제
       if (!confirm('정말 삭제하시겠습니까?')) return;
-      const { error } = await window.supabase.from('wp1_locations').delete().eq('id', id);
+      const { error } = await window.supabase.from('mx_locations').delete().eq('id', id);
       if (error) return alert('삭제 실패: ' + error.message);
       loadLocations();
     }
@@ -2225,7 +2274,7 @@ async function getAvailableLocations() {
   try {
     // 1. status='available'이고 disabled가 아닌 위치 목록
     const { data: locations, error: locError } = await window.supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .select('location_code')
       .eq('status', 'available')
       .neq('status', 'disabled')
@@ -2234,7 +2283,7 @@ async function getAvailableLocations() {
 
     // 2. receiving_items에서 모든 항목의 위치 조회 (입고 확정 여부와 관계없이)
     const { data: allItems, error: itemsError } = await window.supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .select('location_code, label_id');
     
     if (itemsError) {
@@ -2242,15 +2291,16 @@ async function getAvailableLocations() {
       return [];
     }
     
-    // 3. 출고 완료된 항목의 label_id 조회 (출고 완료된 항목은 점유에서 제외)
+    // 3. 출고 완료된 항목의 container_no 조회 (출고 완료된 항목은 점유에서 제외)
+    // Container 단위: label_id 대신 container_no 사용
     const { data: shippedItems } = await window.supabase
-      .from('shipping_instruction_items')
-      .select('label_id, shipped_at');
+      .from('mx_shipping_instruction_items')
+      .select('container_no, shipped_at');
     
-    const shippedLabelIds = new Set(
+    const shippedContainerNos = new Set(
       (shippedItems || [])
         .filter(i => i.shipped_at)
-        .map(i => String(i.label_id))
+        .map(i => String(i.container_no))
     );
     
     // 4. 점유된 위치 코드 집합 생성
@@ -2259,9 +2309,9 @@ async function getAvailableLocations() {
     const occupiedCodes = new Set();
     (allItems || []).forEach(item => {
       if (!item.location_code) return;
-      const labelId = String(item.label_id);
+      const containerNo = String(item.container_no);
       // 출고 완료되지 않은 항목의 위치는 모두 점유로 간주
-      if (!shippedLabelIds.has(labelId)) {
+      if (!shippedContainerNos.has(containerNo)) {
         const normCode = normalizeLocationCode(item.location_code);
         occupiedCodes.add(normCode);
       }
@@ -2468,7 +2518,7 @@ async function showLocationMapModal() {
   try {
     // 1. 모든 위치 로드
     const { data: locations, error: locError } = await supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .select('location_code, x, y, width, height, status')
       .order('location_code');
     
@@ -2476,28 +2526,33 @@ async function showLocationMapModal() {
     
     // 2. 실제 사용 중인 위치 확인 (receiving_items에서)
     const { data: receivingItems, error: recError } = await supabase
-      .from('receiving_items')
-      .select('location_code, container_no, part_no, quantity');
+      .from('mx_receiving_items')
+      .select('location_code, container_no, label_id');
     
     if (recError) throw recError;
     
-    // 3. 출고된 항목 확인 (shipping_instruction에서 shipped된 항목)
+    // 3. 출고된 항목 확인 (shipping_instruction_items에서 shipped된 항목)
+    // Container 단위: label_id 대신 container_no 사용
     const { data: shippedItems, error: shipError } = await supabase
-      .from('shipping_instruction')
-      .select('container_no, status')
-      .eq('status', 'shipped');
+      .from('mx_shipping_instruction_items')
+      .select('container_no, shipped_at')
+      .not('shipped_at', 'is', null);
     
     if (shipError) throw shipError;
     
-    // 출고된 컨테이너 번호 집합
-    const shippedContainers = new Set((shippedItems || []).map(item => item.container_no));
+    // 출고된 container_no 집합
+    const shippedContainerNos = new Set((shippedItems || []).map(item => String(item.container_no)));
     
     // 실제 사용 중인 위치 집합 (출고되지 않은 항목만)
     const occupiedLocations = new Set();
     (receivingItems || []).forEach(item => {
-      if (item.location_code && !shippedContainers.has(item.container_no)) {
-        const normalizedCode = normalizeLocationCode(item.location_code);
-        occupiedLocations.add(normalizedCode);
+      if (item.location_code) {
+        const containerNo = String(item.container_no);
+        // 출고되지 않은 항목의 위치만 점유로 간주
+        if (!shippedContainerNos.has(containerNo)) {
+          const normalizedCode = normalizeLocationCode(item.location_code);
+          occupiedLocations.add(normalizedCode);
+        }
       }
     });
     
@@ -2514,7 +2569,7 @@ async function showLocationMapModal() {
     try {
       if (window.supabase) {
         const { data, error } = await window.supabase
-          .from('wp1_background_elements')
+          .from('mx_background_elements')
           .select('elements_data')
           .eq('id', 1)
           .single();
@@ -2792,6 +2847,104 @@ function setupReceivingPlaceToggle() {
   console.log('입고처 드롭다운 토글 이벤트 리스너 설정 완료');
 }
 
+// 기존 제품 정보(remark) 값들을 불러와서 드롭다운에 채우기
+async function loadExistingRemarks() {
+  try {
+    const { data, error } = await window.supabase
+      .from('mx_receiving_items')
+      .select('remark')
+      .not('remark', 'is', null)
+      .neq('remark', '');
+    
+    if (error) {
+      console.error('제품 정보 불러오기 실패:', error);
+      return;
+    }
+    
+    // 중복 제거 및 정렬
+    const uniqueRemarks = [...new Set((data || []).map(item => item.remark).filter(r => r && r.trim()))].sort();
+    
+    const remarkSelect = document.getElementById('remarkSelect');
+    if (!remarkSelect) return;
+    
+    // 기존 옵션 제거 (첫 번째 "제품 정보 선택..." 옵션 제외)
+    while (remarkSelect.options.length > 1) {
+      remarkSelect.remove(1);
+    }
+    
+    // 새 옵션 추가
+    uniqueRemarks.forEach(remark => {
+      const option = document.createElement('option');
+      option.value = remark;
+      option.textContent = remark;
+      remarkSelect.appendChild(option);
+    });
+    
+    console.log('제품 정보 드롭다운 로드 완료:', uniqueRemarks.length, '개');
+  } catch (error) {
+    console.error('제품 정보 불러오기 중 오류:', error);
+  }
+}
+
+// 제품 정보(remark) 드롭다운/입력 필드 토글 함수
+function setupRemarkToggle() {
+  const showBtn = document.getElementById('showRemarkInputBtn');
+  const hideBtn = document.getElementById('hideRemarkInputBtn');
+  const remarkSelect = document.getElementById('remarkSelect');
+  const remarkInput = document.getElementById('remarkInput');
+  
+  if (!showBtn || !hideBtn || !remarkSelect || !remarkInput) {
+    console.log('제품 정보 드롭다운 요소를 찾을 수 없습니다:', {
+      showBtn: !!showBtn,
+      hideBtn: !!hideBtn,
+      remarkSelect: !!remarkSelect,
+      remarkInput: !!remarkInput
+    });
+    return;
+  }
+  
+  // 기존 이벤트 리스너 제거 (중복 방지)
+  const newShowBtn = showBtn.cloneNode(true);
+  showBtn.parentNode.replaceChild(newShowBtn, showBtn);
+  const newHideBtn = hideBtn.cloneNode(true);
+  hideBtn.parentNode.replaceChild(newHideBtn, hideBtn);
+  const newSelect = remarkSelect.cloneNode(true);
+  remarkSelect.parentNode.replaceChild(newSelect, remarkSelect);
+  
+  // 새로운 요소 참조
+  const actualShowBtn = document.getElementById('showRemarkInputBtn');
+  const actualHideBtn = document.getElementById('hideRemarkInputBtn');
+  const actualSelect = document.getElementById('remarkSelect');
+  
+  actualShowBtn.addEventListener('click', () => {
+    console.log('제품 정보 직접 입력 버튼 클릭');
+    actualSelect.classList.add('hidden');
+    remarkInput.classList.remove('hidden');
+    actualShowBtn.classList.add('hidden');
+    actualHideBtn.classList.remove('hidden');
+    actualSelect.value = '';
+  });
+  
+  actualHideBtn.addEventListener('click', () => {
+    console.log('제품 정보 드롭다운 선택 버튼 클릭');
+    actualSelect.classList.remove('hidden');
+    remarkInput.classList.add('hidden');
+    actualShowBtn.classList.remove('hidden');
+    actualHideBtn.classList.add('hidden');
+    remarkInput.value = '';
+    // 드롭다운도 초기화
+    const remarkSelect = document.getElementById('remarkSelect');
+    if (remarkSelect) remarkSelect.value = '';
+  });
+  
+  // 드롭다운 선택 시 입력란에 값 설정 (참고용)
+  actualSelect.addEventListener('change', (e) => {
+    console.log('제품 정보 드롭다운 선택:', e.target.value);
+  });
+  
+  console.log('제품 정보 드롭다운 토글 이벤트 리스너 설정 완료');
+}
+
 // 체크박스 이벤트 리스너 직접 연결 함수
 function attachAutoLocationCheckboxListener() {
   const autoLocationCheckbox = document.getElementById('autoLocationCheckbox');
@@ -2865,7 +3018,7 @@ async function createTestData() {
     
     // 1. 테스트 receiving_plan 생성
     const { data: planData, error: planError } = await window.supabase
-      .from('receiving_plan')
+      .from('mx_receiving_plan')
       .insert({
         type: 'container',
         container_no: 'TEST-001',
@@ -2904,7 +3057,7 @@ async function createTestData() {
     ];
     
     const { data: itemsData, error: itemsError } = await window.supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .insert(testItems)
       .select('*');
     
@@ -2919,11 +3072,10 @@ async function createTestData() {
     const logData = testItems.map(item => ({
       label_id: item.label_id,
       received_at: new Date().toISOString(),
-      confirmed_by: 'admin',
     }));
     
     const { data: logDataResult, error: logError } = await window.supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .insert(logData)
       .select('*');
     
@@ -2958,7 +3110,7 @@ function addTestDataButton() {
 // 데이터 표시 함수
 async function displayPlans(plans) {
   // receiving_log 데이터 조회
-  const { data: logs, error: logError } = await window.supabase.from('receiving_log').select('label_id, received_at');
+  const { data: logs, error: logError } = await window.supabase.from('mx_receiving_log').select('label_id, received_at');
   if (logError) throw logError;
   const logMap = new Map();
   (logs || []).forEach(log => logMap.set(String(log.label_id), log));
@@ -2972,12 +3124,11 @@ async function displayPlans(plans) {
   }
 
   planListBody.innerHTML = plans.map(plan => {
-    const items = (plan && Array.isArray(plan.receiving_items)) ? plan.receiving_items : [];
-    const partNos = items.map(i => i.part_no).join(', ');
-    const qtys = items.map(i => i.quantity).join(', ');
-    const locations = items.map(i => i.location_code).join(', ');
-    const receivingPlaces = items.map(i => i.receiving_place || '-').join(', ');
-    const receivedAts = items.map(i => logMap.has(String(i.label_id)) ? new Date(logMap.get(String(i.label_id)).received_at).toISOString().slice(0,10) : '').join(', ');
+    const items = (plan && Array.isArray(plan.mx_receiving_items)) ? plan.mx_receiving_items : [];
+    const remarks = items.map(i => i.remark || '-').filter(r => r !== '-').join(', ') || '-';
+    const locations = items.map(i => i.location_code).filter(Boolean).join(', ') || '-';
+    const receivingPlaces = items.map(i => i.receiving_place || '-').filter(p => p !== '-').join(', ') || '-';
+    const receivedAts = items.map(i => logMap.has(String(i.label_id)) ? new Date(logMap.get(String(i.label_id)).received_at).toISOString().slice(0,10) : '').filter(Boolean).join(', ') || '-';
     const allReceived = items.length > 0 && items.every(i => logMap.has(String(i.label_id)));
     const status = allReceived ? '입고' : '대기';
     let forceBtn = '';
@@ -3005,8 +3156,7 @@ async function displayPlans(plans) {
         <td class="px-4 py-2 border">${plan.container_no || ''}</td>
         <td class="px-4 py-2 border">${locations}</td>
         <td class="px-4 py-2 border">${receivingPlaces}</td>
-        <td class="px-4 py-2 border">${partNos}</td>
-        <td class="px-4 py-2 border">${qtys}</td>
+        <td class="px-4 py-2 border">${remarks}</td>
         <td class="px-4 py-2 border">${status}</td>
         <td class="px-4 py-2 border">${receivedAts}</td>
         <td class="px-2 py-2 border text-center">
@@ -3034,7 +3184,7 @@ async function checkDatabaseStatus() {
     
     // 1. receiving_plan 테이블 확인
     const { data: plans, error: planError } = await window.supabase
-      .from('receiving_plan')
+      .from('mx_receiving_plan')
       .select('*')
       .limit(5);
     
@@ -3046,7 +3196,7 @@ async function checkDatabaseStatus() {
     
     // 2. receiving_items 테이블 확인
     const { data: items, error: itemError } = await window.supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .select('*')
       .limit(5);
     
@@ -3058,7 +3208,7 @@ async function checkDatabaseStatus() {
     
     // 3. receiving_log 테이블 확인
     const { data: logs, error: logError } = await window.supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .select('*')
       .limit(5);
     

@@ -49,6 +49,7 @@ foreach ($file in $jsFiles) {
     $content = $content -replace "\.from\(['""]flagged_containers['""]", ".from('mx_flagged_containers'"
     $content = $content -replace "\.from\(['""]wp1_locations['""]", ".from('mx_locations'"
     $content = $content -replace "\.from\(['""]wp1_delivery_locations['""]", ".from('mx_delivery_locations'"
+    $content = $content -replace "\.from\(['""]wp1_background_elements['""]", ".from('mx_background_elements'"
     $content = $content -replace "\.from\(['""]wp2_locations['""]", ".from('mx_locations'"
     $content = $content -replace "\.from\(['""]wp2_delivery_locations['""]", ".from('mx_delivery_locations'"
     
@@ -89,6 +90,7 @@ foreach ($file in $sqlFiles) {
     $content = $content -replace "CREATE TABLE.*?flagged_containers", "CREATE TABLE IF NOT EXISTS mx_flagged_containers"
     $content = $content -replace "wp1_locations", "mx_locations"
     $content = $content -replace "wp1_delivery_locations", "mx_delivery_locations"
+    $content = $content -replace "wp1_background_elements", "mx_background_elements"
     $content = $content -replace "wp2_locations", "mx_locations"
     $content = $content -replace "wp2_delivery_locations", "mx_delivery_locations"
     

@@ -35,32 +35,33 @@ export async function loadReport() {
     reportError.classList.add('hidden');
     reportTableBody.innerHTML = '';
     try {
-      // 1. 입고 데이터 조회
+      // 1. 입고 데이터 조회 (Container 단위, plan_id를 통한 관계 조회)
       const { data: receiving, error: recError } = await supabase
-        .from('receiving_items')
-        .select('container_no, part_no, quantity, location_code, receiving_place, receiving_plan(receive_date), label_id');
+        .from('mx_receiving_items')
+        .select('container_no, remark, location_code, receiving_place, label_id, plan_id, mx_receiving_plan:plan_id(receive_date)');
       if (recError) throw recError;
 
-      // 2. 출고 데이터 조회 (shipping_instruction에서 출고일 추출)
+      // 2. 출고 데이터 조회 (Container 단위)
       const { data: shipping, error: shipError } = await supabase
-        .from('shipping_instruction')
-        .select('container_no, part_no, shipping_date, status, part_quantities');
+        .from('mx_shipping_instruction')
+        .select('container_no, shipping_date, status');
       if (shipError) throw shipError;
 
       // 2-1. 출고 실물 단위 조회 (shipping_instruction_items의 shipped_at)
+      // Container 단위: label_id 대신 container_no 사용
       const { data: shippedItems, error: shippedItemsError } = await supabase
-        .from('shipping_instruction_items')
-        .select('label_id, shipped_at, shipping_instruction_id');
+        .from('mx_shipping_instruction_items')
+        .select('container_no, shipped_at, shipping_instruction_id');
       if (shippedItemsError) throw shippedItemsError;
-      const shippedLabelSet = new Set((shippedItems || []).filter(i => i.shipped_at).map(i => String(i.label_id)));
-      const shippedLabelToDate = {};
+      const shippedContainerSet = new Set((shippedItems || []).filter(i => i.shipped_at).map(i => String(i.container_no)));
+      const shippedContainerToDate = {};
       (shippedItems || []).forEach(i => {
-        if (i.shipped_at && i.label_id) shippedLabelToDate[String(i.label_id)] = i.shipped_at;
+        if (i.shipped_at && i.container_no) shippedContainerToDate[String(i.container_no)] = i.shipped_at;
       });
 
       // 3. 실입고 기록 조회
       const { data: logs, error: logError } = await supabase
-        .from('receiving_log')
+        .from('mx_receiving_log')
         .select('label_id, received_at');
       if (logError) throw logError;
       // label_id -> received_at 매핑
@@ -69,13 +70,13 @@ export async function loadReport() {
         if (l.label_id) receivedMap.set(String(l.label_id), l.received_at);
       });
 
-      // 4. 컨테이너/파트별로 입고/출고/입고대기 매칭
+      // 4. 컨테이너별로 입고/출고/입고대기 매칭 (Container 단위)
       const normalize = v => (v === undefined || v === null) ? '' : String(v).trim().toLowerCase();
       
-      // label_id로 그룹화하여 중복 제거
+      // container_no로 그룹화하여 중복 제거
       const groupedReceiving = {};
       receiving.forEach(rec => {
-        const key = String(rec.label_id);
+        const key = String(rec.container_no);
         if (!groupedReceiving[key]) {
           groupedReceiving[key] = rec;
         }
@@ -90,41 +91,26 @@ export async function loadReport() {
           status = 'In Stock';
           in_date = receivedMap.get(String(rec.label_id))?.slice(0, 10) || '-';
         }
-        // 출고 여부 - part_quantities가 있는 경우 해당 파트가 포함되어 있는지 확인
+        // 출고 여부 - Container 단위로 매칭
         const ships = shipping.filter(s => {
-          if (normalize(s.container_no) !== normalize(rec.container_no)) return false;
-          
-          // part_quantities가 있는 경우 (여러 파트)
-          if (s.part_quantities) {
-            try {
-              const partQuantities = JSON.parse(s.part_quantities);
-              return Object.keys(partQuantities).some(part => 
-                normalize(part) === normalize(rec.part_no)
-              );
-            } catch (e) {
-              console.error('Error parsing part_quantities:', e);
-              return false;
-            }
-          }
-          
-          // 기존 방식 (단일 파트)
-          return normalize(s.part_no) === normalize(rec.part_no);
+          return normalize(s.container_no) === normalize(rec.container_no);
         });
         const ship = ships.find(s => s.status === 'shipped' && s.shipping_date);
         if (ship && receivedMap.has(String(rec.label_id))) {
           status = 'Shipped';
           out_date = ship.shipping_date || '-';
         }
+        // receive_date는 mx_receiving_plan에서 가져오기
+        const receiveDate = rec.mx_receiving_plan?.receive_date || '-';
         return {
           container_no: rec.container_no,
-          part_no: rec.part_no,
+          remark: rec.remark || '-',
           in_date: in_date,
           out_date: out_date,
           status: status,
-          remarks: '',
-          quantity: rec.quantity || 0,
           receiving_place: rec.receiving_place || '',
-          location_code: rec.location_code || ''
+          location_code: rec.location_code || '',
+          receive_date: receiveDate
         };
       })
       // 입고 확정(receiving_log에 있는) 항목만 남김
@@ -137,7 +123,7 @@ export async function loadReport() {
         if (filterOutDateFrom.value && (row.out_date === '-' || row.out_date < filterOutDateFrom.value)) return false;
         if (filterOutDateTo.value && (row.out_date === '-' || row.out_date > filterOutDateTo.value)) return false;
         if (filterContainer.value && !(row.container_no || '').toLowerCase().includes(filterContainer.value.toLowerCase())) return false;
-        if (filterPartNo.value && !(row.part_no || '').toLowerCase().includes(filterPartNo.value.toLowerCase())) return false;
+        if (filterPartNo.value && !(row.remark || '').toLowerCase().includes(filterPartNo.value.toLowerCase())) return false;
         if (filterStatus.value && (filterStatus.value === 'shipped' ? row.status !== 'Shipped' : row.status !== 'In Stock')) return false;
         return true;
       });
@@ -168,19 +154,17 @@ export async function loadReport() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="p-2 border">${row.container_no || '-'}</td>
-          <td class="p-2 border">${row.part_no || '-'}</td>
+          <td class="p-2 border">${row.remark || '-'}</td>
           <td class="p-2 border">${row.in_date || '-'}</td>
           <td class="p-2 border">${row.out_date || '-'}</td>
           <td class="p-2 border">${row.receiving_place || '-'}</td>
           <td class="p-2 border">${row.location_code || '-'}</td>
           <td class="p-2 border">${row.status}</td>
-          <td class="p-2 border">${row.remarks || ''}</td>
-          <td class="p-2 border">${row.quantity || 0}</td>
         `;
         reportTableBody.appendChild(tr);
       }
       if (filtered.length === 0) {
-        reportTableBody.innerHTML = '<tr><td colspan="9" class="text-center text-gray-400 py-8">검색 결과가 없습니다.</td></tr>';
+        reportTableBody.innerHTML = '<tr><td colspan="7" class="text-center text-gray-400 py-8">검색 결과가 없습니다.</td></tr>';
       }
     } catch (err) {
       reportError.textContent = '데이터 로드 실패: ' + err.message;
@@ -209,7 +193,7 @@ export async function loadReport() {
 
     // 0. flagged_containers 테이블에서 문제 컨테이너 번호, 사유, 색상 조회
     const { data: flaggedContainers, error: flaggedError } = await supabase
-      .from('flagged_containers')
+        .from('mx_flagged_containers')
       .select('container_no, reason, highlight_color');
     const flaggedContainerSet = new Set();
     const flaggedContainerReasonMap = new Map();
@@ -231,7 +215,7 @@ export async function loadReport() {
 
     // 1. receiving_log 데이터 조회 (label_id, received_at)
     const { data: logs, error: logError } = await supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .select('label_id, received_at');
     if (logError) throw logError;
     const receivedMap = new Map();
@@ -244,17 +228,16 @@ export async function loadReport() {
       properties: { tabColor: { argb: 'FF4472C4' } }
     });
 
-    // 시트1 헤더 및 컬럼 정의
+    // 시트1 헤더 및 컬럼 정의 (Container 단위)
     ws1.columns = [
       { header: 'NO.', key: 'no', width: 6 },
       { header: 'CONTAINER NO.', key: 'container', width: 20 },
-      { header: 'PART NO.', key: 'part', width: 12 },
+      { header: '제품 정보', key: 'part', width: 20 },
       { header: 'IN DATE', key: 'in_date', width: 12 },
       { header: 'OUT DATE', key: 'out_date', width: 12 },
       { header: 'FROM', key: 'from', width: 12 },
       { header: 'LOCATION', key: 'location', width: 10 },
       { header: 'DURATION', key: 'duration', width: 10 },
-      { header: 'QTY', key: 'qty', width: 8 },
       { header: 'STATUS', key: 'status', width: 12 },
       { header: 'REMARK', key: 'remark', width: 30 }
     ];
@@ -289,29 +272,30 @@ export async function loadReport() {
     if (hasFilter && window._lastReportRows && Array.isArray(window._lastReportRows)) {
       exportRows = window._lastReportRows;
     } else {
-      // 전체 데이터 재조회 (기존 방식)
+      // 전체 데이터 재조회 (Container 단위)
       const { data: receiving, error: recError } = await supabase
-        .from('receiving_items')
-        .select('container_no, part_no, quantity, location_code, receiving_place, receiving_plan(receive_date), label_id');
+        .from('mx_receiving_items')
+        .select('container_no, remark, location_code, receiving_place, label_id, plan_id, mx_receiving_plan:plan_id(receive_date)');
       if (recError) throw recError;
       const { data: shipping, error: shipError } = await supabase
-        .from('shipping_instruction')
-        .select('container_no, part_no, shipping_date, status, part_quantities');
+        .from('mx_shipping_instruction')
+        .select('container_no, shipping_date, status');
       if (shipError) throw shipError;
+      // Container 단위: label_id 대신 container_no 사용
       const { data: shippedItems, error: shippedItemsError } = await supabase
-        .from('shipping_instruction_items')
-        .select('label_id, shipped_at, shipping_instruction_id');
+        .from('mx_shipping_instruction_items')
+        .select('container_no, shipped_at, shipping_instruction_id');
       if (shippedItemsError) throw shippedItemsError;
-      const shippedLabelSet = new Set((shippedItems || []).filter(i => i.shipped_at).map(i => String(i.label_id)));
-      const shippedLabelToDate = {};
+      const shippedContainerSet = new Set((shippedItems || []).filter(i => i.shipped_at).map(i => String(i.container_no)));
+      const shippedContainerToDate = {};
       (shippedItems || []).forEach(i => {
-        if (i.shipped_at && i.label_id) shippedLabelToDate[String(i.label_id)] = i.shipped_at;
+        if (i.shipped_at && i.container_no) shippedContainerToDate[String(i.container_no)] = i.shipped_at;
       });
 
-      // label_id로 그룹화하여 중복 제거
+      // container_no로 그룹화하여 중복 제거 (Container 단위)
       const groupedReceiving = {};
       receiving.forEach(rec => {
-        const key = String(rec.label_id);
+        const key = String(rec.container_no);
         if (!groupedReceiving[key]) {
           groupedReceiving[key] = rec;
         }
@@ -325,41 +309,26 @@ export async function loadReport() {
           status = 'In Stock';
           in_date = receivedMap.get(String(rec.label_id))?.slice(0, 10) || '-';
         }
-        // 컨테이너와 파트 매칭 - part_quantities가 있는 경우 해당 파트가 포함되어 있는지 확인
+        // 컨테이너 매칭 (Container 단위)
         const ships = shipping.filter(s => {
-          if (normalize(s.container_no) !== normalize(rec.container_no)) return false;
-          
-          // part_quantities가 있는 경우 (여러 파트)
-          if (s.part_quantities) {
-            try {
-              const partQuantities = JSON.parse(s.part_quantities);
-              return Object.keys(partQuantities).some(part => 
-                normalize(part) === normalize(rec.part_no)
-              );
-            } catch (e) {
-              console.error('Error parsing part_quantities:', e);
-              return false;
-            }
-          }
-          
-          // 기존 방식 (단일 파트)
-          return normalize(s.part_no) === normalize(rec.part_no);
+          return normalize(s.container_no) === normalize(rec.container_no);
         });
         const ship = ships.find(s => s.status === 'shipped' && s.shipping_date);
         if (ship && receivedMap.has(String(rec.label_id))) {
           status = 'Shipped';
           out_date = ship.shipping_date || '-';
         }
+        // receive_date는 mx_receiving_plan에서 가져오기
+        const receiveDate = rec.mx_receiving_plan?.receive_date || '-';
         return {
           container_no: rec.container_no,
-          part_no: rec.part_no,
+          remark: rec.remark || '-',
           in_date: in_date,
           out_date: out_date,
           status: status,
-          remarks: '',
-          quantity: rec.quantity || 0,
           receiving_place: rec.receiving_place || '',
-          location_code: rec.location_code || ''
+          location_code: rec.location_code || '',
+          receive_date: receiveDate
         };
       })
       // 입고 확정(receiving_log에 있는) 항목만 남김
@@ -373,7 +342,12 @@ export async function loadReport() {
     });
     exportRows.forEach((row, idx) => {
       let duration = '';
-      if (row.in_date && row.in_date !== '-') {
+      if (row.in_date && row.in_date !== '-' && row.out_date && row.out_date !== '-') {
+        const inD = new Date(row.in_date);
+        const outD = new Date(row.out_date);
+        duration = Math.max(0, Math.floor((outD - inD) / (1000*60*60*24)));
+      } else if (row.in_date && row.in_date !== '-' && (!row.out_date || row.out_date === '-')) {
+        // 출고일이 없으면 오늘 날짜 기준으로 계산
         const inD = new Date(row.in_date);
         duration = Math.max(0, Math.floor((today - inD) / (1000*60*60*24)));
       }
@@ -391,13 +365,12 @@ export async function loadReport() {
       ws1.addRow({
         no: idx + 1,
         container: row.container_no,
-        part: row.part_no,
+        part: row.remark || '-',
         in_date: formatDate(row.in_date),
         out_date: formatDate(row.out_date),
         from: row.receiving_place || '',
         location: row.location_code || '',
         duration: duration,
-        qty: Number(row.quantity),
         status: row.status,
         remark: remark
       });
@@ -410,10 +383,7 @@ export async function loadReport() {
           left: { style: 'thin', color: { argb: 'FF000000' } },
           right: { style: 'thin', color: { argb: 'FF000000' } }
         };
-        if (colNumber === 9) { // QTY 컬럼
-          cell.alignment = { vertical: 'middle', horizontal: 'right' };
-          cell.numFmt = '#,##0';
-        } else if (colNumber === 11) { // REMARK 컬럼
+        if (colNumber === 10) { // REMARK 컬럼
           cell.alignment = { vertical: 'middle', horizontal: 'left' };
         } else {
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -453,122 +423,47 @@ export async function loadReport() {
       to: { row: 1, column: 11 }
     };
 
-    // 시트2: CURRENT STOCK (In Stock만 집계)
-    const ws2 = workbook.addWorksheet('CURRENT STOCK', {
-      properties: { tabColor: { argb: 'FF70AD47' } }
+    // 시트2: TODAY INOUT (오늘 입고/출고 내역)
+    // 시트3 생성 전, receiving, shippedItems, logs, shipping 등 항상 조회 (변수명 중복 방지, Container 단위)
+    const { data: todayReceiving, error: todayRecError } = await supabase
+      .from('mx_receiving_items')
+      .select('container_no, remark, location_code, receiving_place, label_id, plan_id, mx_receiving_plan:plan_id(receive_date)');
+    if (todayRecError) throw todayRecError;
+    const { data: todayShipping, error: todayShipError } = await supabase
+      .from('mx_shipping_instruction')
+      .select('container_no, shipping_date, status');
+    if (todayShipError) throw todayShipError;
+    const { data: todayShippedItems, error: todayShippedItemsError } = await supabase
+      .from('mx_shipping_instruction_items')
+      .select('container_no, shipped_at, shipping_instruction_id');
+    if (todayShippedItemsError) throw todayShippedItemsError;
+    const { data: todayLogs, error: todayLogError } = await supabase
+      .from('mx_receiving_log')
+      .select('label_id, received_at');
+    if (todayLogError) throw todayLogError;
+
+    const ws2 = workbook.addWorksheet('TODAY INOUT', {
+      properties: { tabColor: { argb: 'FFFFC000' } }
     });
     ws2.columns = [
-      { header: 'PART NO.', key: 'part', width: 18 },
-      { header: 'QTY', key: 'qty', width: 12 }
+      { header: 'NO.', key: 'no', width: 8 },
+      { header: 'TYPE', key: 'type', width: 10 },
+      { header: 'CONTAINER NO.', key: 'container', width: 20 },
+      { header: '제품 정보', key: 'part', width: 20 },
+      { header: 'DATE', key: 'date', width: 15 },
+      { header: 'LOCATION', key: 'location', width: 15 },
+      { header: 'REMARKS', key: 'remarks', width: 15 }
     ];
     const headerRow2 = ws2.getRow(1);
     headerRow2.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
     headerRow2.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF70AD47' }
+      fgColor: { argb: 'FFFFC000' }
     };
     headerRow2.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow2.height = 30;
     headerRow2.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF000000' } },
-        bottom: { style: 'thin', color: { argb: 'FF000000' } },
-        left: { style: 'thin', color: { argb: 'FF000000' } },
-        right: { style: 'thin', color: { argb: 'FF000000' } }
-      };
-    });
-    // PART NO별 보유수량 합산 (In Stock만)
-    const partStock = {};
-    exportRows.forEach(row => {
-      // receiving_log에 있는 항목만 집계 (in_date가 '-'가 아닌 것)
-      if (row.status === 'In Stock' && row.in_date !== '-') {
-        const partNo = row.part_no;
-        const qty = Number(row.quantity || 0);
-        if (partNo) {
-          partStock[partNo] = (partStock[partNo] || 0) + qty;
-        }
-      }
-    });
-    const sortedParts = Object.entries(partStock)
-      .sort(([partA], [partB]) => partA.localeCompare(partB));
-    sortedParts.forEach(([part, qty], idx) => {
-      const dataRow = ws2.addRow({ 
-        part: part, 
-        qty: Number(qty)
-      });
-      dataRow.height = 25;
-      dataRow.eachCell((cell, colNumber) => {
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } }
-        };
-        if (colNumber === 2) { // QTY 컬럼
-          cell.alignment = { vertical: 'middle', horizontal: 'right' };
-          cell.numFmt = '#,##0'; // 숫자 형식 적용
-        } else {
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        }
-      });
-      if (idx % 2 === 1) {
-        dataRow.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFF2F2F2' }
-          };
-        });
-      }
-    });
-    ws2.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: 2 }
-    };
-
-    // 시트3: TODAY INOUT (오늘 입고/출고 내역)
-    // 시트3 생성 전, receiving, shippedItems, logs, shipping 등 항상 조회 (변수명 중복 방지)
-    const { data: todayReceiving, error: todayRecError } = await supabase
-      .from('receiving_items')
-      .select('container_no, part_no, quantity, location_code, receiving_place, receiving_plan(receive_date), label_id');
-    if (todayRecError) throw todayRecError;
-    const { data: todayShipping, error: todayShipError } = await supabase
-      .from('shipping_instruction')
-      .select('container_no, part_no, shipping_date, status');
-    if (todayShipError) throw todayShipError;
-    const { data: todayShippedItems, error: todayShippedItemsError } = await supabase
-      .from('shipping_instruction_items')
-      .select('label_id, shipped_at, shipping_instruction_id');
-    if (todayShippedItemsError) throw todayShippedItemsError;
-    const { data: todayLogs, error: todayLogError } = await supabase
-      .from('receiving_log')
-      .select('label_id, received_at');
-    if (todayLogError) throw todayLogError;
-
-    const ws3 = workbook.addWorksheet('TODAY INOUT', {
-      properties: { tabColor: { argb: 'FFFFC000' } }
-    });
-    ws3.columns = [
-      { header: 'NO.', key: 'no', width: 8 },
-      { header: 'TYPE', key: 'type', width: 10 },
-      { header: 'CONTAINER NO.', key: 'container', width: 20 },
-      { header: 'PART NO.', key: 'part', width: 18 },
-      { header: 'DATE', key: 'date', width: 15 },
-      { header: 'QTY', key: 'qty', width: 12 },
-      { header: 'LOCATION', key: 'location', width: 15 },
-      { header: 'REMARKS', key: 'remarks', width: 15 }
-    ];
-    const headerRow3 = ws3.getRow(1);
-    headerRow3.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-    headerRow3.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFC000' }
-    };
-    headerRow3.alignment = { vertical: 'middle', horizontal: 'center' };
-    headerRow3.height = 30;
-    headerRow3.eachCell((cell) => {
       cell.border = {
         top: { style: 'thin', color: { argb: 'FF000000' } },
         bottom: { style: 'thin', color: { argb: 'FF000000' } },
@@ -582,40 +477,38 @@ export async function loadReport() {
     let todayInRows = [];
     (todayLogs || []).forEach((log, idx) => {
       if (log.received_at && log.received_at.slice(0,10) === todayStrYMD) {
-        // receiving_items에서 정보 찾기
+        // receiving_items에서 정보 찾기 (Container 단위, label_id로 찾기)
         const rec = (todayReceiving || []).find(r => String(r.label_id) === String(log.label_id));
         if (rec) {
           todayInRows.push({
             type: 'IN',
             container: rec.container_no,
-            part: rec.part_no,
+            part: rec.remark || '-',
             date: log.received_at.slice(0,10),
-            qty: rec.quantity,
             location: rec.location_code || '',
             remarks: ''
           });
         }
       }
     });
-    // 오늘 출고 내역 (shipping_instruction_items)
+    // 오늘 출고 내역 (shipping_instruction_items, Container 단위)
     (todayShippedItems || []).forEach((item, idx) => {
       if (item.shipped_at && item.shipped_at.slice(0,10) === todayStrYMD) {
-        // receiving_items에서 정보 찾기
-        const rec = (todayReceiving || []).find(r => String(r.label_id) === String(item.label_id));
+        // receiving_items에서 container_no로 정보 찾기
+        const rec = (todayReceiving || []).find(r => String(r.container_no) === String(item.container_no));
         if (rec) {
           todayInRows.push({
             type: 'OUT',
             container: rec.container_no,
-            part: rec.part_no,
+            part: rec.remark || '-',
             date: item.shipped_at.slice(0,10),
-            qty: rec.quantity,
             location: rec.location_code || '',
             remarks: ''
           });
         }
       }
     });
-    // 날짜, 타입, 컨테이너, 파트, 수량 등으로 정렬
+    // 날짜, 타입, 컨테이너, 제품 정보로 정렬
     todayInRows.sort((a, b) => {
       if (a.type !== b.type) return a.type === 'IN' ? -1 : 1;
       if (a.date !== b.date) return a.date > b.date ? 1 : -1;
@@ -624,13 +517,12 @@ export async function loadReport() {
       return 0;
     });
     todayInRows.forEach((row, idx) => {
-      const dataRow = ws3.addRow({
+      const dataRow = ws2.addRow({
         no: idx + 1,
         type: row.type,
         container: row.container,
         part: row.part,
         date: row.date,
-        qty: row.qty,
         location: row.location,
         remarks: row.remarks
       });
@@ -642,12 +534,7 @@ export async function loadReport() {
           left: { style: 'thin', color: { argb: 'FF000000' } },
           right: { style: 'thin', color: { argb: 'FF000000' } }
         };
-        if (colNumber === 6) { // QTY 컬럼
-          cell.alignment = { vertical: 'middle', horizontal: 'right' };
-          cell.numFmt = '#,##0';
-        } else {
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        }
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
       });
       if (idx % 2 === 1) {
         dataRow.eachCell((cell) => {
@@ -659,9 +546,9 @@ export async function loadReport() {
         });
       }
     });
-    ws3.autoFilter = {
+    ws2.autoFilter = {
       from: { row: 1, column: 1 },
-      to: { row: 1, column: 8 }
+      to: { row: 1, column: 7 }
     };
 
     // 파일 다운로드
@@ -698,7 +585,7 @@ export async function loadReport() {
       if (type === 'trailer') {
         // 1. Plan 저장 (trailer_seq 자동 생성)
         const { data: planData, error: planError } = await supabase
-          .from('receiving_plan')
+          .from('mx_receiving_plan')
           .insert({
             type,
             receive_date: receiveDate,
@@ -710,7 +597,7 @@ export async function loadReport() {
         const trailerNo = `T-${String(planData.trailer_seq).padStart(5, '0')}`;
         // 2. Plan의 container_no 업데이트
         await supabase
-          .from('receiving_plan')
+          .from('mx_receiving_plan')
           .update({ container_no: trailerNo })
           .eq('id', planId);
         // 3. Items 저장
@@ -726,12 +613,12 @@ export async function loadReport() {
             receiving_place: receivingPlace,
           });
         }
-        const { error: itemsError } = await supabase.from('receiving_items').insert(items);
+        const { error: itemsError } = await supabase.from('mx_receiving_items').insert(items);
         if (itemsError) throw itemsError;
       } else {
         // 컨테이너는 기존 방식(직접 입력/수정)
         const { data: planData, error: planError } = await supabase
-          .from('receiving_plan')
+          .from('mx_receiving_plan')
           .insert({
             type,
             container_no: container,
@@ -754,7 +641,7 @@ export async function loadReport() {
             receiving_place: receivingPlace,
           });
         }
-        const { error: itemsError } = await supabase.from('receiving_items').insert(items);
+        const { error: itemsError } = await supabase.from('mx_receiving_items').insert(items);
         if (itemsError) throw itemsError;
       }
       alert('Saved!');

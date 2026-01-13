@@ -61,7 +61,6 @@
       if (name === 'receiving_plan') jsName = 'receiving';
       if (name === 'shipping_plan') jsName = 'shipping';
       if (name === 'receiving') jsName = 'receiving_admin';
-      if (name === 'ckd_pallet') jsName = 'ckd_pallet';
       
       // Load section-specific JavaScript (동적 import)
       console.log('Loading section JS:', jsName);
@@ -126,9 +125,6 @@
         </div>
         <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
           <a href="#daily_report" style="color: white; text-decoration: none;">📈 일일 입출고 리포트</a>
-        </div>
-        <div style="display: block; padding: 12px 16px; margin-bottom: 8px; background-color: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
-          <a href="#ckd_pallet" style="color: white; text-decoration: none;">📦 CKD PALLET 관리</a>
         </div>
         <!-- 마스터 관리 메뉴 -->
         <div id="masterMenu" style="margin-bottom: 8px;">

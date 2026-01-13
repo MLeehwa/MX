@@ -38,7 +38,7 @@ async function loadDeliveryLocations() {
       throw new Error('Supabase가 아직 로드되지 않았습니다.');
     }
     const { data, error } = await window.supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .select('*')
       .order('location_name', { ascending: true });
     
@@ -126,7 +126,7 @@ async function handleAdd(e) {
       return;
     }
     const { error } = await window.supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .insert({
         location_name: locationName,
         address: address || null,
@@ -156,7 +156,7 @@ async function editDeliveryLocation(id) {
       return;
     }
     const { data, error } = await window.supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .select('*')
       .eq('id', id)
       .single();
@@ -207,7 +207,7 @@ async function handleUpdate(e) {
       return;
     }
     const { error } = await window.supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .update({
         location_name: locationName,
         address: address || null,
@@ -243,7 +243,7 @@ async function deleteDeliveryLocation(id) {
     
     // shipping_instruction에서 사용 중인지 확인
     const { data: shippingInstructions, error: checkError } = await window.supabase
-      .from('shipping_instruction')
+      .from('mx_shipping_instruction')
       .select('id')
       .eq('delivery_location_id', id)
       .limit(1);
@@ -256,7 +256,7 @@ async function deleteDeliveryLocation(id) {
     }
     
     const { error } = await window.supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .delete()
       .eq('id', id);
     

@@ -46,7 +46,7 @@ function initializeEventListeners() {
 
       try {
         const { data: items, error } = await supabase
-          .from('receiving_items')
+          .from('mx_receiving_items')
           .select(`
             label_id,
             quantity,
@@ -104,7 +104,7 @@ function initializeEventListeners() {
 
       try {
         const { data, error } = await supabase
-          .from('shipping_instruction')
+          .from('mx_shipping_instruction')
           .insert({
             items: selectedItems,
             status: 'pending'

@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Leehwa WP1 WMS System</title>
+  <title>Leehwa MX WMS System</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 min-h-screen flex items-center justify-center">
   <div class="max-w-lg w-full space-y-10 p-12 bg-white bg-opacity-90 rounded-3xl shadow-2xl border border-gray-200">
-    <h2 class="text-center text-4xl font-extrabold text-gray-900 drop-shadow-lg">Leehwa WP1 WMS System</h2>
+    <h2 class="text-center text-4xl font-extrabold text-gray-900 drop-shadow-lg">Leehwa MX WMS System</h2>
     <p class="mt-2 text-center text-lg text-gray-700">Log in to start</p>
 
     <form id="loginForm" class="space-y-6">
       <div>
         <label class="block text-lg font-medium text-gray-700 mb-1">ID</label>
-        <input id="username" type="text" disabled
-          class="w-full px-5 py-3 border border-gray-300 rounded-xl bg-gray-100 cursor-not-allowed"
-          placeholder="선택한 Role 과 동일하게 자동 세팅됩니다." />
+        <input id="username" type="text" required
+          class="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          placeholder="아이디를 입력하세요" autocomplete="off" />
       </div>
 
       <div>
@@ -24,15 +24,6 @@
         <input id="password" type="password" required value=""
           class="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
           placeholder="비밀번호를 입력하세요" autocomplete="off" />
-      </div>
-
-      <div>
-        <label for="roleSelect" class="block text-lg font-medium text-gray-700 mb-1">Role 선택</label>
-        <select id="roleSelect"
-          class="w-full px-5 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400">
-          <option value="admin">Admin</option>
-          <option value="pda">PDA</option>
-        </select>
       </div>
 
       <button type="submit"
@@ -47,25 +38,18 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const loginForm   = document.getElementById('loginForm');
-      const roleSelect  = document.getElementById('roleSelect');
       const usernameIn  = document.getElementById('username');
       const passwordIn  = document.getElementById('password');
       const errorMessage = document.getElementById('errorMessage');
 
-      // 페이지 로드 시, 선택된 role을 username에 반영
-      usernameIn.value = roleSelect.value;
-      roleSelect.addEventListener('change', () => {
-        usernameIn.value = roleSelect.value;
-      });
-
       loginForm.addEventListener('submit', e => {
         e.preventDefault();
-        const role = roleSelect.value;
+        const username = usernameIn.value.trim();
         const password = passwordIn.value;
 
-        // 비밀번호 검증 (1234)
-        if (password !== '12345') {
-          errorMessage.textContent = '비밀번호가 올바르지 않습니다.';
+        // 아이디와 비밀번호 검증
+        if (username !== 'leehwa' || password !== 'leehwa123') {
+          errorMessage.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
           errorMessage.classList.remove('hidden');
           passwordIn.focus();
           return;
@@ -74,20 +58,16 @@
         // 에러 메시지 숨기기
         errorMessage.classList.add('hidden');
 
-        // ID/PW 무시하고, username과 role을 동일하게 세팅
+        // 사용자 정보 저장 (항상 admin으로 설정)
         const userObj = {
-          id:       role,
-          username: role,
-          role:     role
+          id:       'leehwa',
+          username: 'leehwa',
+          role:     'admin'
         };
         localStorage.setItem('user', JSON.stringify(userObj));
 
-        // role에 따라 화면 이동
-        if (role === 'admin') {
-          window.location.href = '/admin/index.html';
-        } else {
-          window.location.href = '/pda/sections/pda_index.html';
-        }
+        // 항상 admin으로 이동
+        window.location.href = '/admin/index.html';
       });
     });
   </script>

@@ -89,7 +89,7 @@ async function loadDeliveryLocations() {
   
   try {
     const { data, error } = await supabase
-      .from('wp1_delivery_locations')
+      .from('mx_delivery_locations')
       .select('id, location_name')
       .eq('is_active', true)
       .order('location_name', { ascending: true });
@@ -172,8 +172,9 @@ let layout = [];
 // 데이터베이스에서 위치 레이아웃 로드
 async function loadLocationLayout() {
   try {
+    // font_size 컬럼이 없을 수 있으므로 먼저 시도하고, 없으면 기본값 사용
     const { data, error } = await supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .select('location_code, x, y, width, height, status')
       .order('location_code');
     
@@ -186,18 +187,34 @@ async function loadLocationLayout() {
     
     // 좌표 정보가 있는 위치만 레이아웃에 포함 (모든 상태 포함, disabled/maintenance도 표시)
     // 위치 코드를 정규화하여 저장 (A1 -> A-01)
-    layout = (data || [])
-      .filter(loc => loc.x !== null && loc.y !== null && loc.width !== null && loc.height !== null)
-      .map(loc => ({
-        code: normalizeLocationCode(loc.location_code), // 위치 코드 정규화
+    const filteredData = (data || []).filter(loc => {
+      return loc.x !== null && loc.y !== null && loc.width !== null && loc.height !== null;
+    });
+    
+    layout = filteredData.map(loc => {
+      const normalizedCode = normalizeLocationCode(loc.location_code);
+      return {
+        code: normalizedCode, // 위치 코드 정규화
         x: loc.x,
         y: loc.y,
         width: loc.width,
         height: loc.height,
-        status: loc.status // 상태 정보도 저장
-      }));
+        status: loc.status, // 상태 정보도 저장
+        font_size: (loc.font_size !== undefined && loc.font_size !== null) ? loc.font_size : 13 // 글씨 크기 정보도 저장 (없으면 기본값 13)
+      };
+    });
     
     console.log(`위치 레이아웃 로드 완료: ${layout.length}개 위치`);
+    if (layout.length > 0) {
+      console.log('위치 레이아웃 샘플:', layout[0]);
+      console.log('위치 레이아웃 전체 (처음 5개):', layout.slice(0, 5));
+    } else {
+      console.warn('⚠️ 위치 레이아웃이 비어있습니다. 좌표 정보가 있는 위치가 없습니다.');
+      console.warn('⚠️ 데이터베이스에서 로드된 원본 데이터:', data);
+      if (data && data.length > 0) {
+        console.warn('⚠️ 원본 데이터 샘플 (처음 3개):', data.slice(0, 3));
+      }
+    }
   } catch (error) {
     console.error('위치 레이아웃 로드 중 오류:', error);
     layout = [];
@@ -224,7 +241,7 @@ async function initializeSVG() {
   try {
     if (supabase) {
       const { data, error } = await supabase
-        .from('wp1_background_elements')
+        .from('mx_background_elements')
         .select('elements_data')
         .eq('id', 1)
         .single();
@@ -291,6 +308,7 @@ async function initializeSVG() {
       const stroke = bg.stroke || '#000';
       const strokeWidth = Number(bg.strokeWidth) || 1;
       
+      // 배경 요소는 오프셋 없이 그대로 렌더링 (배경은 캔버스 전체를 기준으로 함)
       rect.setAttribute('x', x);
       rect.setAttribute('y', y);
       rect.setAttribute('width', width);
@@ -298,6 +316,9 @@ async function initializeSVG() {
       rect.setAttribute('fill', fill);
       rect.setAttribute('stroke', stroke);
       rect.setAttribute('stroke-width', strokeWidth);
+      // 배경 요소는 클릭 이벤트를 받지 않도록 설정 (위치가 클릭 가능하도록)
+      rect.setAttribute('pointer-events', 'none');
+      // 배경 요소는 z-index를 낮게 설정하기 위해 먼저 추가 (SVG에서는 나중에 추가된 요소가 위에 표시됨)
       svg.appendChild(rect);
       console.log(`위치 보기: rect 요소 추가됨 - x:${x}, y:${y}, width:${width}, height:${height}, fill:${fill}, stroke:${stroke}, strokeWidth:${strokeWidth}`);
     } else if (bg.type === 'text') {
@@ -328,37 +349,37 @@ async function initializeSVG() {
 async function loadOccupied() {
   try {
     const { data: items, error: itemsError } = await supabase
-      .from('receiving_items')
-      .select('part_no,quantity,location_code,plan_id,label_id,container_no,receiving_plan:plan_id(container_no,receive_date)');
+      .from('mx_receiving_items')
+      .select('location_code,plan_id,label_id,container_no,remark,receiving_plan:plan_id(container_no,receive_date)');
     
     if (itemsError) throw itemsError;
 
     // 입고 로그 조회
-    const { data: logs } = await supabase.from('receiving_log').select('label_id');
+    const { data: logs } = await supabase.from('mx_receiving_log').select('label_id');
     const receivedSet = new Set((logs || []).map(l => l.label_id));
 
     // 출고완료(shipped) 출하증의 container_no 목록 조회
     const { data: shippedList } = await supabase
-      .from('shipping_instruction')
+      .from('mx_shipping_instruction')
       .select('container_no, status')
       .eq('status', 'shipped');
     const shippedContainerSet = new Set((shippedList || []).map(s => s.container_no));
 
-    // 출고완료된 label_id 전체 조회 (shipping_instruction_items의 shipped_at이 null이 아닌 것만)
-    let shippedLabelSet = new Set();
+    // 출고완료된 container_no 전체 조회 (shipping_instruction_items의 shipped_at이 null이 아닌 것만)
+    let shippedContainerSet2 = new Set();
     const { data: shippedItems } = await supabase
-      .from('shipping_instruction_items')
-      .select('label_id, shipped_at');
+      .from('mx_shipping_instruction_items')
+      .select('container_no, shipped_at');
     if (shippedItems) {
-      shippedLabelSet = new Set(
-        shippedItems.filter(i => i.shipped_at).map(i => String(i.label_id))
+      shippedContainerSet2 = new Set(
+        shippedItems.filter(i => i.shipped_at).map(i => String(i.container_no))
       );
     }
 
     // 데이터 초기화
     currentOccupied = {};
     
-    // 데이터 매핑 - 같은 위치의 여러 파트를 처리
+    // 데이터 매핑 - Container 단위로 처리
     const locationGroups = {};
     
     for (const item of items) {
@@ -366,7 +387,7 @@ async function loadOccupied() {
       if (shippedContainerSet.has(item.container_no)) {
         continue;
       }
-      if (shippedLabelSet.has(String(item.label_id))) {
+      if (shippedContainerSet2.has(String(item.container_no))) {
         continue;
       }
       
@@ -380,25 +401,14 @@ async function loadOccupied() {
       locationGroups[code].push(item);
     }
     
-    // 각 위치별로 데이터 정리
+    // 각 위치별로 데이터 정리 (Container 단위)
     for (const [code, groupItems] of Object.entries(locationGroups)) {
-      // 파트별 수량 계산
-      const partQuantities = {};
-      let totalQty = 0;
       let containerIds = new Set();
       let receivingDates = new Set();
       let labelIds = [];
       let receivedCount = 0;
       
       groupItems.forEach(item => {
-        const partNo = item.part_no ? item.part_no.toString().trim() : '';
-        const qty = parseInt(item.quantity) || 0;
-        
-        if (partNo && qty > 0) {
-          partQuantities[partNo] = (partQuantities[partNo] || 0) + qty;
-          totalQty += qty;
-        }
-        
         if (item.receiving_plan?.container_no) {
           containerIds.add(item.receiving_plan.container_no);
         }
@@ -413,31 +423,29 @@ async function loadOccupied() {
         }
       });
       
-      // 가장 많은 수량을 가진 파트를 대표 파트로 선택
-      let mainPartNo = '';
-      let maxQty = 0;
-      for (const [partNo, qty] of Object.entries(partQuantities)) {
-        if (qty > maxQty) {
-          maxQty = qty;
-          mainPartNo = partNo;
+      // 제품 정보(remark) 가져오기
+      let remark = null;
+      for (const item of groupItems) {
+        if (item.remark && item.remark.trim() !== '') {
+          remark = item.remark;
+          break;
         }
       }
       
       currentOccupied[code] = {
-        part_no: mainPartNo,
-        qty: totalQty,
-        receiving_date: Array.from(receivingDates)[0], // 첫 번째 날짜 사용
         container_id: Array.from(containerIds)[0], // 첫 번째 컨테이너 사용
+        receiving_date: Array.from(receivingDates)[0], // 첫 번째 날짜 사용
         received: receivedCount > 0,
         label_id: labelIds[0], // 첫 번째 label_id 사용
         raw_location_code: groupItems[0].location_code,
-        all_parts: partQuantities, // 모든 파트 정보 저장
-        total_items: groupItems.length
+        remark: remark || '-' // 제품 정보
       };
     }
 
     // UI 업데이트
     renderLocations();
+    // 제품 정보 드롭다운 업데이트
+    updateProductFilterDropdown();
   } catch (error) {
     console.error('Error loading occupied data:', error);
     showMessage(
@@ -447,12 +455,79 @@ async function loadOccupied() {
   }
 }
 
+// 제품 정보 드롭다운 업데이트 함수
+async function updateProductFilterDropdown() {
+  try {
+    // mx_receiving_items에서 고유한 remark 목록 가져오기
+    const { data: items, error } = await supabase
+      .from('mx_receiving_items')
+      .select('remark')
+      .not('remark', 'is', null)
+      .neq('remark', '');
+    
+    if (error) throw error;
+    
+    // 고유한 제품 정보 추출
+    const uniqueRemarks = [...new Set((items || []).map(item => item.remark).filter(r => r && r.trim() !== ''))].sort();
+    
+    const select = document.getElementById('filterProduct');
+    if (!select) return;
+    
+    // 기존 옵션 유지 (첫 번째 "전체" 옵션)
+    const firstOption = select.querySelector('option[value=""]');
+    select.innerHTML = '';
+    if (firstOption) {
+      select.appendChild(firstOption);
+    } else {
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '전체';
+      select.appendChild(defaultOption);
+    }
+    
+    // 제품 정보 옵션 추가
+    uniqueRemarks.forEach(remark => {
+      const option = document.createElement('option');
+      option.value = remark;
+      option.textContent = remark;
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error('제품 정보 드롭다운 업데이트 실패:', error);
+  }
+}
+
+// viewBox 업데이트
+function updateViewBox() {
+  const svg = document.getElementById('locationSVG');
+  if (!svg) {
+    console.error('위치 보기: updateViewBox - SVG 요소를 찾을 수 없습니다.');
+    return;
+  }
+  
+  const viewBox = calculateViewBox();
+  svg.setAttribute('viewBox', viewBox);
+  console.log('위치 보기: viewBox 업데이트:', viewBox);
+  console.log('위치 보기: SVG 현재 viewBox:', svg.getAttribute('viewBox'));
+  console.log('위치 보기: SVG 크기:', svg.clientWidth, 'x', svg.clientHeight);
+}
+
 // Location 렌더링
 function renderLocations(filter = {}) {
   const svg = document.getElementById('locationSVG');
-  if (!svg) return;
+  if (!svg) {
+    console.error('위치 보기: SVG 요소를 찾을 수 없습니다.');
+    return;
+  }
+  
   // 기존 Location 요소 제거
   document.querySelectorAll('#locationSVG g[data-type="location"]').forEach(g => g.remove());
+
+  // layout이 비어있는지 확인
+  if (!layout || layout.length === 0) {
+    console.warn('위치 보기: 렌더링할 위치가 없습니다. layout.length:', layout?.length || 0);
+    return;
+  }
 
   // 필터링된 코드 계산
   let filteredCodes = new Set();
@@ -462,12 +537,12 @@ function renderLocations(filter = {}) {
   if (filter.product || filter.trailer || filter.date) {
     Object.entries(currentOccupied).forEach(([code, info]) => {
       let match = true;
-      if (filter.product && !info.part_no?.toLowerCase().includes(filter.product.toLowerCase())) match = false;
+      if (filter.product && info.remark !== filter.product) match = false;
       if (filter.trailer && !info.container_id?.toLowerCase().includes(filter.trailer.toLowerCase())) match = false;
       if (filter.date && !info.receiving_date?.includes(filter.date)) match = false;
       if (match) {
         filteredCodes.add(code);
-        if (filter.product && (!oldestDate || info.receiving_date < oldestDate)) {
+        if (filter.trailer && (!oldestDate || info.receiving_date < oldestDate)) {
           oldestDate = info.receiving_date;
           oldestCode = code;
         }
@@ -475,57 +550,77 @@ function renderLocations(filter = {}) {
     });
   }
 
-  // Location 렌더링
+  // Location 렌더링 - 성능 최적화: 배치 처리 및 이벤트 위임 사용
+  const offsetX = 0;
+  const offsetY = 0;
+  
+  // SVG에 이벤트 위임 설정 (한 번만)
+  if (!svg.hasAttribute('data-location-click-bound')) {
+    svg.addEventListener('click', (e) => {
+      const g = e.target.closest('g[data-type="location"]');
+      if (!g) return;
+      const code = g.getAttribute('data-location-code');
+      if (code) {
+        if (currentOccupied[code]) {
+          showLocationModal(code, currentOccupied[code]);
+        } else {
+          showLocationModal(code, null);
+        }
+      }
+    });
+    svg.setAttribute('data-location-click-bound', 'true');
+  }
+  
+  // 배치로 요소 생성 및 추가 (성능 최적화)
+  const elements = [];
   layout.forEach(loc => {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('data-type', 'location');
     g.setAttribute('data-location-code', loc.code);
+    
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', loc.x);
-    rect.setAttribute('y', loc.y);
+    rect.setAttribute('x', loc.x + offsetX);
+    rect.setAttribute('y', loc.y + offsetY);
     rect.setAttribute('width', loc.width);
     rect.setAttribute('height', loc.height);
     rect.setAttribute('rx', 5);
+    
     // 색상 결정
     let fill = '#86efac'; // 비어있음(연녹색)
-    
-    // 사용 불가 또는 점검중인 경우 주황색으로 표시 (최우선)
     if (loc.status === 'disabled' || loc.status === 'maintenance') {
       fill = '#fb923c'; // 주황색
     } else if (currentOccupied[loc.code]) {
       if (currentOccupied[loc.code].received) fill = '#fca5a5'; // 입고 완료(연빨강)
       else fill = '#a5b4fc'; // 예약/미입고(연파랑)
     }
-    
-    // 필터 일치 시 노랑 (사용 불가/점검중이 아닌 경우에만)
     if (fill !== '#fb923c' && filteredCodes.has(loc.code)) fill = '#fde047'; // 필터 일치(노랑)
-    if (fill !== '#fb923c' && filter.product && loc.code === oldestCode) fill = '#fb923c'; // 제품명+가장 오래된 입고(주황)
+    if (fill !== '#fb923c' && filter.trailer && loc.code === oldestCode) fill = '#fb923c'; // 컨테이너+가장 오래된 입고(주황)
+    
     rect.setAttribute('fill', fill);
     rect.setAttribute('stroke', '#333');
     rect.setAttribute('stroke-width', 1.5);
     rect.style.cursor = 'pointer';
     g.appendChild(rect);
+    
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', loc.x + loc.width/2);
-    text.setAttribute('y', loc.y + loc.height/2 + 4);
+    text.setAttribute('x', loc.x + offsetX + loc.width/2);
+    text.setAttribute('y', loc.y + offsetY + loc.height/2);
     text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('font-size', '13');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('font-size', loc.font_size || 13);
     text.setAttribute('font-weight', 'bold');
     text.setAttribute('fill', '#222');
     text.textContent = loc.code;
     g.appendChild(text);
-    // 클릭 이벤트
-    g.addEventListener('click', () => {
-      // 빈 위치도 클릭 가능하도록 수정
-      if (currentOccupied[loc.code]) {
-        showLocationModal(loc.code, currentOccupied[loc.code]);
-      } else {
-        // 빈 위치 클릭 시 정보 표시
-        showLocationModal(loc.code, null);
-      }
-    });
-    svg.appendChild(g);
+    
+    elements.push(g);
   });
+  
+  // 한 번에 모든 요소 추가 (배치 처리)
+  elements.forEach(g => svg.appendChild(g));
+  
+  // 렌더링 후 viewBox 업데이트는 resetLocationView에서 호출
+  // updateViewBox();
 }
 
 // location_code 포맷 통일 함수 ('A1', 'A-01', 'A 01' 등 모두 'A-01'로 변환)
@@ -545,7 +640,7 @@ async function getAvailableLocationsForView() {
   try {
     // 1. status='available'이고 disabled가 아닌 위치 목록
     const { data: locations, error: locError } = await supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .select('location_code')
       .eq('status', 'available')
       .neq('status', 'disabled')
@@ -554,7 +649,7 @@ async function getAvailableLocationsForView() {
 
     // 2. 입고 완료된 항목의 위치 조회 (receiving_log 확인)
     const { data: receivedItems, error: receivedError } = await supabase
-      .from('receiving_log')
+      .from('mx_receiving_log')
       .select('label_id');
     
     if (receivedError) {
@@ -566,7 +661,7 @@ async function getAvailableLocationsForView() {
     
     // 3. receiving_items에서 입고 완료된 항목의 위치 조회
     const { data: allItems, error: itemsError } = await supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .select('location_code, label_id');
     
     if (itemsError) {
@@ -576,26 +671,49 @@ async function getAvailableLocationsForView() {
     
     // 4. 출고 완료된 항목 제외
     const { data: shippedItems } = await supabase
-      .from('shipping_instruction_items')
-      .select('label_id, shipped_at');
+      .from('mx_shipping_instruction_items')
+      .select('container_no, shipped_at');
     
-    const shippedLabelIds = new Set(
+    const shippedContainerIds = new Set(
       (shippedItems || [])
-        .filter(i => i.shipped_at)
-        .map(i => String(i.label_id))
+        .filter(i => i.shipped_at && i.container_no)
+        .map(i => String(i.container_no))
     );
     
-    // 5. 점유된 위치 코드 집합 생성
+    // 5. 점유된 위치 코드 집합 생성 (Container 단위)
     const occupiedCodes = new Set();
+    // receiving_items에서 container_no별로 그룹화
+    const containerLocationMap = new Map();
     (allItems || []).forEach(item => {
       if (!item.location_code) return;
       const labelId = String(item.label_id);
-      // 입고 완료되었고 출고되지 않은 항목만 점유로 간주
-      if (receivedLabelIds.has(labelId) && !shippedLabelIds.has(labelId)) {
+      // 입고 완료된 항목만 처리
+      if (receivedLabelIds.has(labelId)) {
+        // container_no를 가져오기 위해 receiving_items 다시 조회
         const normCode = normalizeLocationCode(item.location_code);
-        occupiedCodes.add(normCode);
+        if (!containerLocationMap.has(normCode)) {
+          containerLocationMap.set(normCode, new Set());
+        }
       }
     });
+    
+    // container_no별로 출고 여부 확인하여 점유된 위치 결정
+    const { data: allItemsWithContainer } = await supabase
+      .from('mx_receiving_items')
+      .select('location_code, container_no, label_id');
+    
+    if (allItemsWithContainer) {
+      allItemsWithContainer.forEach(item => {
+        if (!item.location_code || !item.container_no) return;
+        const labelId = String(item.label_id);
+        const containerNo = String(item.container_no);
+        // 입고 완료되었고 출고되지 않은 Container만 점유로 간주
+        if (receivedLabelIds.has(labelId) && !shippedContainerIds.has(containerNo)) {
+          const normCode = normalizeLocationCode(item.location_code);
+          occupiedCodes.add(normCode);
+        }
+      });
+    }
     
     // 6. 사용 가능한 위치 필터링
     const available = locations
@@ -685,13 +803,95 @@ async function loadEmptyLocationDropdown() {
   emptyLocationSelect.addEventListener('change', changeHandler);
 }
 
+// 모든 위치와 배경 요소를 포함하는 viewBox 계산
+function calculateViewBox() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let locationMinY = Infinity; // 위치만의 최소 Y (배경 요소 제외)
+  let locationMinX = Infinity; // 위치만의 최소 X
+  let hasContent = false;
+  
+  // 위치들의 범위 계산
+  if (layout && layout.length > 0) {
+    console.log(`위치 보기: calculateViewBox - ${layout.length}개 위치 범위 계산 시작`);
+    layout.forEach(loc => {
+      hasContent = true;
+      const right = loc.x + loc.width;
+      const bottom = loc.y + loc.height;
+      if (loc.x < minX) minX = loc.x;
+      if (loc.x < locationMinX) locationMinX = loc.x;
+      if (loc.y < minY) minY = loc.y;
+      if (loc.y < locationMinY) locationMinY = loc.y; // 위치만의 최소 Y 저장
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+    });
+    console.log(`위치 보기: calculateViewBox - 위치 범위: minX=${locationMinX}, minY=${locationMinY}, maxX=${maxX}, maxY=${maxY}`);
+  } else {
+    console.warn('위치 보기: calculateViewBox - layout이 비어있거나 null입니다.');
+  }
+  
+  // 위치가 있으면 위치의 최소 좌표를 확정 (상단/왼쪽 간격 완전 제거)
+  if (locationMinX !== Infinity) {
+    minX = locationMinX; // 위치의 실제 최소 X 사용
+  }
+  if (locationMinY !== Infinity) {
+    minY = locationMinY; // 위치의 실제 최소 Y 사용 (상단 간격 완전 제거)
+  }
+  
+  // 내용이 없으면 기본값 사용
+  if (!hasContent || minX === Infinity) {
+    return '0 0 835 667';
+  }
+  
+  // 배경 요소들의 범위도 고려 (maxX, maxY만, minX/minY는 위치 기준으로 이미 확정됨)
+  const svg = document.getElementById('locationSVG');
+  if (svg) {
+    // 배경 요소는 pointer-events="none"이 설정되어 있으므로, 일반 rect와 구분하기 위해
+    // data-type이 없는 rect만 배경으로 간주
+    const bgRects = svg.querySelectorAll('rect:not([data-type])');
+    bgRects.forEach(rect => {
+      const x = parseFloat(rect.getAttribute('x')) || 0;
+      const y = parseFloat(rect.getAttribute('y')) || 0;
+      const width = parseFloat(rect.getAttribute('width')) || 0;
+      const height = parseFloat(rect.getAttribute('height')) || 0;
+      const right = x + width;
+      const bottom = y + height;
+      // 배경 요소는 maxX, maxY만 고려 (minX, minY는 위치 기준으로 이미 확정됨)
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+    });
+  }
+  
+  // 최소값이 0보다 작으면 0으로 조정 (음수 좌표 방지)
+  if (minX < 0) minX = 0;
+  if (minY < 0) minY = 0;
+  
+  // 여유 공간 추가 (오른쪽과 하단만, 상단과 왼쪽은 완전히 제거)
+  // 위치들이 화면에 꽉 차게 보이도록 최소한의 여유 공간만 추가
+  const paddingX = Math.min(20, (maxX - minX) * 0.02); // 최대 20px 또는 2%
+  const paddingY = Math.min(20, (maxY - minY) * 0.02); // 최대 20px 또는 2%
+  
+  // 오른쪽 패널(LOCATION INFO) 때문에 잘리지 않도록 최소한의 여유 공간만 확보
+  // 패널 너비는 약 320px이지만, SVG가 flex-1로 축소되므로 실제로는 더 작은 공간이 필요
+  // 위치들이 화면에 꽉 차게 보이도록 최소한만 추가
+  const contentWidth = maxX - minX;
+  const sidePanelPadding = Math.max(50, Math.min(120, contentWidth * 0.08)); // 최소 50px, 최대 120px 또는 8% 추가
+  
+  // 왼쪽과 상단은 여유 공간 전혀 없음 (실제 최소값 그대로 사용)
+  // minX, minY는 이미 위치의 실제 최소값으로 설정됨 - 변경하지 않음
+  maxX = maxX + paddingX + sidePanelPadding; // 오른쪽에 패널 공간까지 고려한 padding 추가
+  maxY = maxY + paddingY; // 하단만 padding 추가
+  
+  console.log(`위치 보기: calculateViewBox - 오른쪽 패널 여유 공간: ${sidePanelPadding}px 추가 (전체 너비: ${contentWidth}px)`);
+  
+  console.log(`viewBox 계산: minX=${minX}, minY=${minY}, width=${maxX - minX}, height=${maxY - minY}`);
+  
+  return `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
+}
+
 // Location View 초기화
 async function resetLocationView() {
-  console.log('위치 보기: resetLocationView() 호출됨');
-  
   // 위치 레이아웃 먼저 로드
   await loadLocationLayout();
-  console.log('위치 보기: 위치 레이아웃 로드 완료');
   
   // SVG 완전 교체
   const oldSVG = document.getElementById('locationSVG');
@@ -701,16 +901,18 @@ async function resetLocationView() {
     svgParent.removeChild(oldSVG);
     newSVG = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     newSVG.setAttribute('id', 'locationSVG');
+    // 초기 viewBox는 나중에 계산
     newSVG.setAttribute('viewBox', '0 0 835 667');
-    newSVG.setAttribute('style', 'width:100vw; height:80vh; max-width:100%; background:#f8fafc; border:1.5px solid #333; box-shadow:0 2px 12px #0002;');
+    newSVG.setAttribute('style', 'width:100%; height:100%; max-width:100%; background:#f8fafc; border:1.5px solid #333; box-shadow:0 2px 12px #0002;');
     svgParent.appendChild(newSVG);
     currentSVG = newSVG;
-    console.log('위치 보기: SVG 교체 완료');
   }
   
-  console.log('위치 보기: initializeSVG() 호출 시작');
   await initializeSVG();
-  console.log('위치 보기: initializeSVG() 완료');
+  
+  // 위치 렌더링 후 viewBox 업데이트
+  renderLocations();
+  updateViewBox();
   // 필터 초기화 (존재할 때만)
   const productFilter = document.getElementById('filterProduct');
   if (productFilter) productFilter.value = '';
@@ -856,26 +1058,15 @@ function showLocationModal(loc, info) {
 
   sidePanelTitle.textContent = `Location: ${loc}`;
   if (info) {
-    let partsInfo = '';
-    if (info.all_parts && Object.keys(info.all_parts).length > 1) {
-      partsInfo = '<div class="mb-2"><b>All Parts:</b><br>' + 
-        Object.entries(info.all_parts).map(([part, qty]) => 
-          `&nbsp;&nbsp;• ${part}: ${qty}개`
-        ).join('<br>') + '</div>';
-    }
-    
     sidePanelBody.innerHTML = `
-      <div class='mb-2'><b>Main Part No:</b> ${info.part_no}</div>
-      <div><b>Total Qty:</b> ${info.qty}</div>
+      <div><b>컨테이너 번호:</b> ${info.container_id || '-'}</div>
       <div><b>입고일:</b> ${info.receiving_date || '-'}</div>
-      <div><b>컨테이너/트레일러:</b> ${info.container_id || '-'}</div>
-      <div><b>Total Items:</b> ${info.total_items || 1}개</div>
-      ${partsInfo}
+      <div><b>제품 정보:</b> ${info.remark || '-'}</div>
     `;
     shippingOrderArea.innerHTML = `<div class="mt-4 text-sm text-gray-500">출하지시서 상태 확인 중...</div>`;
     // 출하지시서 존재 여부 확인 - 컨테이너 단위로 확인
     (async () => {
-      const { data: exist } = await supabase.from('shipping_instruction')
+      const { data: exist } = await supabase.from('mx_shipping_instruction')
         .select('*')
         .eq('container_no', info.container_id)
         .order('created_at', { ascending: false })
@@ -889,7 +1080,7 @@ function showLocationModal(loc, info) {
         `;
         document.getElementById('printShippingBtn').onclick = () => printShippingLabel(si);
       } else {
-        // 없으면 출하지시 버튼 + 프린트 버튼(생성 후 활성화)
+        // 없으면 출하지시 버튼만 (프린트 버튼은 생성 후에만 표시)
         shippingOrderArea.innerHTML = `
           <div class="mt-4 space-y-2">
             <div class="flex gap-2 items-end">
@@ -906,7 +1097,6 @@ function showLocationModal(loc, info) {
             </div>
             <div class="flex gap-2">
               <button id="createShippingBtn" class="bg-green-600 text-white px-4 py-1 rounded flex-1">출하지시</button>
-              <button id="printShippingBtn" class="bg-blue-400 text-white px-4 py-1 rounded" disabled>출하지시서 프린트</button>
             </div>
           </div>
           <div id="shippingResultMsg" class="mt-2 text-sm"></div>
@@ -923,147 +1113,75 @@ function showLocationModal(loc, info) {
           }
           const barcode = info.label_id || info.container_id;
 
-          // 1. 해당 컨테이너의 모든 실물(label_id) 조회 - part_no 포함
-          const { data: items, error: itemsError } = await supabase
-            .from('receiving_items')
-            .select('label_id, quantity, part_no, container_no')
-            .eq('container_no', info.container_id);
-
-          if (itemsError || !items || items.length === 0) {
-            document.getElementById('shippingResultMsg').textContent = '이 컨테이너에 실물(label_id)이 없습니다.';
-            return;
-          }
-          
-          console.log('=== 출하지시서 생성 디버깅 ===');
-          console.log('Container ID:', info.container_id);
-          console.log('Location Info:', info);
-          console.log('Raw items from DB:', items);
-          
-          // 유효한 데이터가 있는지 확인
-          const validItems = items.filter(item => 
-            item.label_id && 
-            item.part_no && 
-            item.quantity !== null && 
-            item.quantity !== undefined && 
-            item.quantity !== '' &&
-            !isNaN(parseInt(item.quantity)) &&
-            parseInt(item.quantity) > 0
-          );
-          
-          if (validItems.length === 0) {
-            document.getElementById('shippingResultMsg').textContent = '이 컨테이너에 유효한 파트 정보가 없습니다.';
-            return;
-          }
-          
-          console.log(`Found ${validItems.length} valid items out of ${items.length} total items`);
-
-          // 2. 파트별 수량 계산 (데이터 검증 및 정규화)
-          const partQuantities = {};
-          console.log('Valid items for processing:', validItems); // 디버깅 로그
-          
-          validItems.forEach(item => {
-            // 파트 번호 정규화 (공백 제거, 대소문자 통일)
-            const partNo = item.part_no ? item.part_no.toString().trim().toUpperCase() : null;
-            
-            // 수량 정규화 (숫자로 변환, null/undefined/빈 문자열 처리)
-            let quantity = 0;
-            if (item.quantity !== null && item.quantity !== undefined && item.quantity !== '') {
-              const parsedQty = parseInt(item.quantity);
-              if (!isNaN(parsedQty) && parsedQty > 0) {
-                quantity = parsedQty;
-              }
-            }
-            
-            console.log(`Processing item: label_id="${item.label_id}", original_part_no="${item.part_no}", normalized_part_no="${partNo}", quantity=${quantity}, original_quantity="${item.quantity}"`); // 디버깅 로그
-            
-            if (partNo && quantity > 0) {
-              partQuantities[partNo] = (partQuantities[partNo] || 0) + quantity;
-            } else {
-              console.warn(`Skipping invalid item: part_no="${partNo}", quantity=${quantity}`);
-            }
-          });
-          
-          console.log('Calculated partQuantities:', partQuantities); // 디버깅 로그
-          
-          // Location Info의 part_no와 실제 DB의 파트 이름 비교
-          const locationPartNo = info.part_no ? info.part_no.toString().trim().toUpperCase() : null;
-          console.log('Location Info part_no:', locationPartNo);
-          console.log('DB part numbers:', Object.keys(partQuantities));
-          
-          // 파트 이름이 다른 경우 경고
-          if (locationPartNo && !Object.keys(partQuantities).includes(locationPartNo)) {
-            console.warn(`Part number mismatch! Location shows "${locationPartNo}" but DB has:`, Object.keys(partQuantities));
-          }
-          
-          // 파트별 수량이 비어있는 경우 경고
-          if (Object.keys(partQuantities).length === 0) {
-            console.error('No valid part quantities found!');
-            document.getElementById('shippingResultMsg').textContent = '유효한 파트 정보가 없습니다.';
-            return;
-          }
-
-          // 3. 출하증 생성 - 컨테이너 단위로 생성
-          // 컨테이너의 총 수량 계산 (정규화된 파트별 수량 합계 사용)
-          const totalQty = Object.values(partQuantities).reduce((sum, qty) => sum + qty, 0);
-          
-          // 파트별 수량 정보를 JSON으로 저장
-          const partQuantitiesJson = JSON.stringify(partQuantities);
-          
           // Delivery Location ID 가져오기
           const deliveryLocationSelect = document.getElementById('deliveryLocationSelect');
           const deliveryLocationId = deliveryLocationSelect && deliveryLocationSelect.value 
             ? parseInt(deliveryLocationSelect.value) 
             : null;
           
-          const { data, error } = await supabase.from('shipping_instruction').insert({
+          // mx_receiving_items에서 remark 가져오기
+          let remark = null;
+          if (info.container_id) {
+            const { data: receivingItem } = await supabase
+              .from('mx_receiving_items')
+              .select('remark')
+              .eq('container_no', info.container_id)
+              .limit(1)
+              .single();
+            if (receivingItem && receivingItem.remark) {
+              remark = receivingItem.remark;
+            }
+          }
+          
+          // Container 단위로 출하 지시서 생성
+          // remark 컬럼이 없을 수 있으므로 조건부로 포함
+          const insertData = {
             location_code: loc,
-            part_no: info.part_no,
-            qty: totalQty, // 컨테이너의 총 수량
+            container_no: info.container_id,
             shipping_date: shippingDate,
             status: 'pending',
             barcode: crypto.randomUUID(),
-            container_no: info.container_id,
-            label_id: null, // 컨테이너 단위이므로 label_id는 null
-            part_quantities: partQuantitiesJson, // 파트별 수량 정보 저장
-            delivery_location_id: deliveryLocationId // Delivery Location ID 저장
-          }).select('*').single();
+            delivery_location_id: deliveryLocationId
+          };
+          
+          // remark 컬럼이 있을 때만 추가 (테이블에 컬럼이 없으면 오류 방지)
+          // SQL 스크립트 실행 후에는 항상 포함 가능
+          if (remark) {
+            insertData.remark = remark;
+          }
+          
+          const { data, error } = await supabase.from('mx_shipping_instruction').insert(insertData).select('*').single();
           if (error) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성 실패: ' + error.message;
             return;
           }
 
-          // 3. shipping_instruction_items에 여러 개 insert (정규화된 수량 사용)
+          // shipping_instruction_items에 Container 정보 저장
           const shippingInstructionId = data.id;
-          const itemsToInsert = validItems.map(item => {
-            // 수량 정규화 (위와 동일한 로직)
-            let quantity = 0;
-            if (item.quantity !== null && item.quantity !== undefined && item.quantity !== '') {
-              const parsedQty = parseInt(item.quantity);
-              if (!isNaN(parsedQty) && parsedQty > 0) {
-                quantity = parsedQty;
-              }
-            }
-            
-            return {
-              shipping_instruction_id: shippingInstructionId,
-              label_id: item.label_id,
-              qty: quantity
-            };
-          });
-          const { error: itemError } = await supabase.from('shipping_instruction_items').insert(itemsToInsert);
+          const itemsToInsert = [{
+            shipping_instruction_id: shippingInstructionId,
+            container_no: info.container_id
+          }];
+          const { error: itemError } = await supabase.from('mx_shipping_instruction_items').insert(itemsToInsert);
           if (itemError) {
             document.getElementById('shippingResultMsg').textContent = '출하지시서 생성(실물 매핑) 실패: ' + itemError.message;
             return;
           }
           document.getElementById('shippingResultMsg').textContent = '컨테이너 출하지시서가 생성되었습니다!';
           lastSI = data;
-          const printBtn = document.getElementById('printShippingBtn');
-          printBtn.disabled = false;
-          printBtn.classList.remove('bg-blue-400');
-          printBtn.classList.add('bg-blue-600');
-        };
-        document.getElementById('printShippingBtn').onclick = async () => {
-          if (lastSI) await printShippingLabel(lastSI);
+          
+          // 출하지시서 생성 후 프린트 버튼 추가
+          const buttonContainer = document.querySelector('#shippingOrderArea .flex.gap-2');
+          if (buttonContainer && !document.getElementById('printShippingBtn')) {
+            const printBtn = document.createElement('button');
+            printBtn.id = 'printShippingBtn';
+            printBtn.className = 'bg-blue-600 text-white px-4 py-1 rounded';
+            printBtn.textContent = '출하지시서 프린트';
+            printBtn.onclick = async () => {
+              if (lastSI) await printShippingLabel(lastSI);
+            };
+            buttonContainer.appendChild(printBtn);
+          }
         };
       }
     })();
@@ -1079,17 +1197,32 @@ async function printShippingLabel(si) {
   const dateStr = now.toISOString().slice(0,10).replace(/-/g,'.');
   const timeStr = now.toTimeString().slice(0,5);
   const bolNo = si.barcode || si.location_code;
-  const model = si.part_no || '-';
-  const description = si.description || '-';
-  const remarks = si.remarks || '-';
+  const containerNo = si.container_no || '-';
   const location = si.location_code || '-';
   
-  // Delivery Location 정보 조회
-  let destinationInfo = 'Hyundai Transys <br> 6601 Kia Pkwy, West Point, GA 31833'; // 기본값
+  // mx_receiving_items에서 remark 가져오기
+  let remark = '-';
+  if (containerNo && containerNo !== '-') {
+    const { data: receivingItem } = await supabase
+      .from('mx_receiving_items')
+      .select('remark')
+      .eq('container_no', containerNo)
+      .not('remark', 'is', null)
+      .neq('remark', '')
+      .limit(1)
+      .single();
+    
+    if (receivingItem && receivingItem.remark) {
+      remark = receivingItem.remark;
+    }
+  }
+  
+  // Delivery Location 정보 조회 (마스터에서 가져오기)
+  let destinationInfo = '-';
   if (si.delivery_location_id) {
     try {
         const { data: deliveryLocation, error: dlError } = await supabase
-          .from('wp1_delivery_locations')
+          .from('mx_delivery_locations')
           .select('location_name, address, contact_person, contact_phone')
           .eq('id', si.delivery_location_id)
           .single();
@@ -1101,22 +1234,17 @@ async function printShippingLabel(si) {
         if (deliveryLocation.address) parts.push(deliveryLocation.address);
         if (deliveryLocation.contact_person) parts.push(`Contact: ${deliveryLocation.contact_person}`);
         if (deliveryLocation.contact_phone) parts.push(`Tel: ${deliveryLocation.contact_phone}`);
-        destinationInfo = parts.join(' <br> ') || destinationInfo;
+        destinationInfo = parts.join(' <br> ') || '-';
       }
     } catch (error) {
       console.error('Delivery Location 조회 실패:', error);
     }
   }
   
-  // 파트별 수량 정보 파싱
-  let partQuantities = {};
-  if (si.part_quantities) {
-    try {
-      partQuantities = JSON.parse(si.part_quantities);
-    } catch (e) {
-      console.error('Error parsing part_quantities:', e);
-    }
-  }
+  // 제품 정보(remark) 표시
+  const model = remark;
+  const description = si.description || '-';
+  const remarks = si.remarks || '-';
 
   const printHtml = `
     <style>
@@ -1143,53 +1271,39 @@ async function printShippingLabel(si) {
       <table class='bol-table bol-header'>
         <tr>
           <th>Company</th>
-          <td>Leehwa SCM, Inc</td>
+          <td>LHM Pesqueria Hub</td>
           <th>BOL#</th>
           <td>${bolNo}</td>
         </tr>
         <tr>
           <th>Address</th>
-          <td>1201 O G Skinner Dr, West Point, GA 31833</td>
+          <td>Calle Esfuerzo No. 104, Perque Industrial Asia Pacific Park, Pesqueria, Nuevo Leon, Mexico</td>
           <th>Destination</th>
           <td>${destinationInfo}</td>
         </tr>
       </table>
-      <table class='bol-table'>
-        <tr>
-          <th>No.</th>
-          <th>Model</th>
-          <th>Description</th>
-          <th>Qty</th>
-          <th>Unit</th>
-          <th>Location</th>
-          <th>Remarks</th>
-        </tr>
-        ${Object.entries(partQuantities).map(([partNo, qty], index) => `
+        <table class='bol-table'>
           <tr>
-            <td>${index + 1}</td>
-            <td>${partNo}</td>
-            <td>${description}</td>
-            <td>${qty}</td>
-            <td>EA</td>
-            <td>${location}</td>
-            <td>${remarks}</td>
+            <th>No.</th>
+            <th>Container No.</th>
+            <th>Model</th>
+            <th>Description</th>
+            <th>Qty</th>
+            <th>Unit</th>
+            <th>Location</th>
+            <th>Remarks</th>
           </tr>
-        `).join('')}
-        ${Object.keys(partQuantities).length === 0 ? `
           <tr>
             <td>1</td>
+            <td>${containerNo}</td>
             <td>${model}</td>
             <td>${description}</td>
-            <td>${si.qty}</td>
+            <td>-</td>
             <td>EA</td>
             <td>${location}</td>
             <td>${remarks}</td>
           </tr>
-        ` : ''}
-        <tr><td colspan='7' style='height:32px;'></td></tr>
-        <tr><td colspan='7' style='height:32px;'></td></tr>
-        <tr><td colspan='7' style='height:32px;'></td></tr>
-      </table>
+        </table>
       <table class='bol-table bol-sign'>
         <tr>
           <th>Consigned To (Carrier)</th>
@@ -1201,10 +1315,10 @@ async function printShippingLabel(si) {
           <td></td><td></td><td></td><td></td>
         </tr>
       </table>
-      <div style='display:flex;justify-content:space-between;align-items:center;margin-top:18px;'>
+        <div style='display:flex;justify-content:space-between;align-items:center;margin-top:18px;'>
         <div>
           <div class='bol-barcode'>${bolNo}</div>
-          <div style='font-size:16px;'>TOTAL Pieces: ${si.qty} EA</div>
+          <div style='font-size:16px;'>Container: ${containerNo}</div>
           <div style='font-size:16px;'>${dateStr} ${timeStr}</div>
         </div>
         <div style='text-align:right;'>
@@ -1214,7 +1328,6 @@ async function printShippingLabel(si) {
       <div class='bol-footer'>
         ● The property described above and destined as indicated above with said carrier (person or corporation in possession of the property under contract) agrees to carry product/s to its place of delivery (Consignee) at said destination. It is mutually agreed as to each the service to be performed hereunder shall be subject to all the terms and conditions of Uniform Domestic Straight Bill of Lading set forth (1) in Uniform Freight Classification in effect on date hereof.<br>
         ● Leehwa SCM must keep copy of this receipt for the future reference.<br>
-        ● Person who signed on this sheet agreed that the above information is correct and their company is responsible for any problem, after container leaves HTPG.<br>
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>

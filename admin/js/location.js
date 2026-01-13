@@ -20,7 +20,7 @@ export async function loadLocation() {
   try {
     // 1. 먼저 입고 데이터 로드
     const { data: receivingItems, error: recError } = await supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .select(`
         id,
         container_no,
@@ -37,7 +37,7 @@ export async function loadLocation() {
 
     // 2. 그 다음 출고 데이터 로드
     const { data: shippingItems, error: shipError } = await supabase
-      .from('shipping_instruction')
+      .from('mx_shipping_instruction')
       .select(`
         id,
         container_no,

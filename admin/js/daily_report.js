@@ -34,7 +34,7 @@ export async function initSection() {
 async function loadDailyReport(date) {
   // 1. 해당 날짜의 입고 계획(plan) 모두 조회
   const { data: plans } = await supabase
-    .from('receiving_plan')
+    .from('mx_receiving_plan')
     .select('id, container_no, receive_date, type')
     .eq('receive_date', date);
 
@@ -43,7 +43,7 @@ async function loadDailyReport(date) {
   let items = [];
   if (containerNos.length > 0) {
     const { data } = await supabase
-      .from('receiving_items')
+      .from('mx_receiving_items')
       .select('container_no, part_no, quantity, location_code, receiving_place')
       .in('container_no', containerNos);
     items = data || [];
@@ -81,7 +81,7 @@ async function loadDailyReport(date) {
 
   // 출고: shipping_date 기준, status 조건 없이 모두
   const { data: shipping } = await supabase
-    .from('shipping_instruction')
+    .from('mx_shipping_instruction')
     .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
     .eq('shipping_date', date);
 

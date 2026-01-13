@@ -71,8 +71,7 @@
           <th data-i18n="th_container_no">Container No.</th>
           <th data-i18n="th_location">Location</th>
           <th data-i18n="th_from">From</th>
-          <th data-i18n="th_part_no">Part No.</th>
-          <th data-i18n="th_qty">Qty</th>
+          <th data-i18n="th_remark">제품 정보</th>
           <th data-i18n="th_status">Status</th>
           <th data-i18n="th_receiving_date">Receiving Date</th>
           <th data-i18n="th_edit">수정</th>
@@ -128,10 +127,11 @@
         <div class="flex items-center gap-2">
           <select id="receivingPlaceSelect" class="w-full border rounded px-3 py-2">
             <option value="">입고처 선택...</option>
-            <option value="PTA">PTA</option>
-            <option value="PORT">PORT</option>
+            <option value="Logis">Logis</option>
+            <option value="PTM">PTM</option>
+            <option value="Port">Port</option>
           </select>
-          <input id="receivingPlaceInput" type="text" class="w-full border rounded px-3 py-2 hidden" placeholder="직접 입력 (예: Main Warehouse)" data-i18n-placeholder="ph_receiving_place" />
+          <input id="receivingPlaceInput" type="text" class="w-full border rounded px-3 py-2 hidden" placeholder="직접 입력" data-i18n-placeholder="ph_receiving_place" />
         </div>
         <div class="flex gap-2 mt-1">
           <button id="showReceivingPlaceInputBtn" type="button" class="text-sm text-blue-600 hover:text-blue-800">직접 입력</button>
@@ -143,11 +143,21 @@
         <label class="block mb-1 font-medium" data-i18n="label_receive_date">Planned Receiving Date</label>
         <input id="receiveDateInput" type="date" class="w-full border rounded px-3 py-2" />
       </div>
-    </div>
 
-    <h3 class="text-base font-medium mt-6 mb-2" data-i18n="label_items">Receiving Items</h3>
-    <div id="itemList" class="space-y-2 mb-4"></div>
-    <button id="addItemBtn" class="bg-blue-500 text-white px-4 py-2 rounded" data-i18n="btn_add_item">+ Add Item</button>
+      <div>
+        <label class="block mb-1 font-medium" data-i18n="label_remark">제품 정보 (선택사항)</label>
+        <div class="flex items-center gap-2">
+          <select id="remarkSelect" class="w-full border rounded px-3 py-2">
+            <option value="">제품 정보 선택...</option>
+          </select>
+          <input id="remarkInput" type="text" class="w-full border rounded px-3 py-2 hidden" placeholder="직접 입력" data-i18n-placeholder="ph_remark" />
+        </div>
+        <div class="flex gap-2 mt-1">
+          <button id="showRemarkInputBtn" type="button" class="text-sm text-blue-600 hover:text-blue-800">직접 입력</button>
+          <button id="hideRemarkInputBtn" type="button" class="text-sm text-gray-600 hover:text-gray-800 hidden">드롭다운 선택</button>
+        </div>
+      </div>
+    </div>
 
     <div id="planFormBtnArea" class="mt-6"></div>
   </div>

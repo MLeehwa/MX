@@ -21,7 +21,7 @@ let originalPositions = []; // 드래그 시작 시 원래 위치 저장 (원상
 let undoStack = []; // 되돌리기 스택
 let maxUndoHistory = 50; // 최대 되돌리기 이력 수
 let gridSize = 20;
-let snapToGridEnabled = false; // 기본값: 끄기
+let snapToGridEnabled = true; // 기본값: 켜기 (위치 조정을 쉽게 하기 위해)
 let showGridEnabled = true;
 let currentMode = 'location'; // 'location' or 'background'
 let backgroundAddMode = 'draw'; // 'draw' or 'add'
@@ -77,7 +77,7 @@ async function loadLocations() {
       throw new Error('Supabase가 아직 초기화되지 않았습니다.');
     }
     const { data, error } = await window.supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .select('*')
       .order('location_code');
     
@@ -117,8 +117,59 @@ function renderLocations() {
     canvas.appendChild(box);
   });
   
+  // 캔버스 크기를 실제 위치 범위에 맞게 자동 조정
+  adjustCanvasSize();
+  
   // 미니맵 업데이트
   updateMinimap();
+}
+
+// 캔버스 크기를 실제 위치와 배경 요소 범위에 맞게 조정
+function adjustCanvasSize() {
+  const canvas = document.getElementById('canvas');
+  if (!canvas) return;
+  
+  let minX = 0, minY = 0, maxX = 1000, maxY = 800; // 기본값 (min-width, min-height)
+  
+  // 위치들의 범위 계산
+  if (locations && locations.length > 0) {
+    locations.forEach(loc => {
+      const right = loc.x + loc.width;
+      const bottom = loc.y + loc.height;
+      if (loc.x < minX) minX = loc.x;
+      if (loc.y < minY) minY = loc.y;
+      if (right > maxX) maxX = right;
+      if (bottom > maxY) maxY = bottom;
+    });
+  }
+  
+  // 배경 요소들의 범위도 고려
+  backgroundElements.forEach(bg => {
+    const right = bg.x + (bg.width || 0);
+    const bottom = bg.y + (bg.height || 0);
+    if (bg.x < minX) minX = bg.x;
+    if (bg.y < minY) minY = bg.y;
+    if (right > maxX) maxX = right;
+    if (bottom > maxY) maxY = bottom;
+  });
+  
+  // 여유 공간 추가 (10% 여유, 최소 100px)
+  const paddingX = Math.max(100, (maxX - minX) * 0.1);
+  const paddingY = Math.max(100, (maxY - minY) * 0.1);
+  minX = Math.max(0, minX - paddingX);
+  minY = Math.max(0, minY - paddingY);
+  maxX = maxX + paddingX;
+  maxY = maxY + paddingY;
+  
+  // 최소 크기 보장
+  const newWidth = Math.max(1000, maxX - minX);
+  const newHeight = Math.max(800, maxY - minY);
+  
+  // 캔버스 크기 업데이트
+  canvas.style.width = newWidth + 'px';
+  canvas.style.height = newHeight + 'px';
+  
+  console.log(`캔버스 크기 자동 조정: ${newWidth}x${newHeight}`);
 }
 
 // 위치 박스 생성
@@ -140,6 +191,9 @@ function createLocationBox(loc) {
   const label = document.createElement('div');
   label.className = 'location-label';
   label.textContent = loc.location_code || '위치';
+  // 글씨 크기 적용
+  const fontSize = loc.font_size || 13;
+  label.style.fontSize = fontSize + 'px';
   box.appendChild(label);
   
   // 리사이즈 핸들
@@ -295,6 +349,7 @@ function updateSelectedLocationInfo(loc) {
   document.getElementById('editWidth').value = loc.width || 60;
   document.getElementById('editHeight').value = loc.height || 20;
   document.getElementById('editStatus').value = loc.status || 'available';
+  document.getElementById('editFontSize').value = loc.font_size || 13;
 }
 
 // 화면 좌표를 캔버스 내부 좌표로 변환 (줌/패닝 고려)
@@ -538,7 +593,8 @@ function saveToUndoStack() {
     width: loc.width,
     height: loc.height,
     location_code: loc.location_code,
-    status: loc.status
+    status: loc.status,
+    font_size: loc.font_size || 13
   }));
   
   undoStack.push(state);
@@ -614,6 +670,7 @@ async function restoreState(state) {
       loc.height = savedLoc.height;
       loc.location_code = savedLoc.location_code;
       loc.status = savedLoc.status;
+      loc.font_size = savedLoc.font_size || 13;
       
       const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
       if (box) {
@@ -622,7 +679,10 @@ async function restoreState(state) {
         box.style.width = savedLoc.width + 'px';
         box.style.height = savedLoc.height + 'px';
         const label = box.querySelector('.location-label');
-        if (label) label.textContent = savedLoc.location_code;
+        if (label) {
+          label.textContent = savedLoc.location_code;
+          label.style.fontSize = (savedLoc.font_size || 13) + 'px';
+        }
       }
       
       // 선택된 위치 정보 패널 업데이트
@@ -811,29 +871,45 @@ function setupEventListeners() {
       return;
     }
     
-    selectedLocation.location_code = normalizeLocationCode(code);
+    const normalizedCode = normalizeLocationCode(code);
+    const fontSize = parseInt(document.getElementById('editFontSize').value) || 13;
+    selectedLocation.location_code = normalizedCode;
     selectedLocation.x = x;
     selectedLocation.y = y;
     selectedLocation.width = width;
     selectedLocation.height = height;
     selectedLocation.status = status;
+    selectedLocation.font_size = fontSize;
     
-    // 박스 업데이트
+    // 박스 업데이트 (저장 전에 미리 업데이트)
     const box = document.querySelector(`.location-box[data-id="${selectedLocation.id}"]`);
     if (box) {
       box.style.left = x + 'px';
       box.style.top = y + 'px';
       box.style.width = width + 'px';
       box.style.height = height + 'px';
-      box.querySelector('.location-label').textContent = code;
+      const label = box.querySelector('.location-label');
+      if (label) {
+        label.textContent = normalizedCode;
+        label.style.fontSize = fontSize + 'px';
+      }
       
       // 상태 클래스 업데이트
       box.classList.remove('status-available', 'status-occupied', 'status-maintenance', 'status-disabled');
       box.classList.add(`status-${status}`);
     }
     
-    // 데이터베이스 저장 (개별 저장이므로 alert 표시)
-    await saveLocation(selectedLocation, true);
+    // 정보 패널의 위치 코드도 업데이트
+    document.getElementById('editLocationCode').value = normalizedCode;
+    
+    // 데이터베이스 저장 (alert 대신 콘솔 로그만)
+    await saveLocation(selectedLocation, false);
+    
+    // 저장 후 선택된 위치 정보 업데이트 (저장된 데이터 반영)
+    // 위치 코드가 정규화되었을 수 있으므로 다시 업데이트
+    updateSelectedLocationInfo(selectedLocation);
+    
+    console.log('위치 저장 완료:', selectedLocation.location_code);
   });
   
   // 위치 삭제
@@ -848,6 +924,117 @@ function setupEventListeners() {
   // 일괄 선택 해제
   document.getElementById('clearSelectionBtn').addEventListener('click', () => {
     clearAllSelections();
+  });
+  
+  // 일괄 글씨 크기 적용
+  document.getElementById('applyFontSizeBtn').addEventListener('click', async () => {
+    if (selectedLocations.length === 0) {
+      alert('글씨 크기를 변경할 위치를 선택하세요.');
+      return;
+    }
+    
+    const fontSize = parseInt(document.getElementById('batchFontSize').value) || 13;
+    if (fontSize < 8 || fontSize > 72) {
+      alert('글씨 크기는 8~72 사이의 값이어야 합니다.');
+      return;
+    }
+    
+    // 선택된 모든 위치의 글씨 크기 업데이트
+    for (const selectedLoc of selectedLocations) {
+      // locations 배열에서 해당 위치를 찾아서 업데이트
+      const loc = locations.find(l => l.id === selectedLoc.id);
+      if (loc) {
+        loc.font_size = fontSize;
+        // selectedLoc도 업데이트 (동기화)
+        selectedLoc.font_size = fontSize;
+      } else {
+        // locations 배열에 없으면 selectedLoc만 업데이트
+        selectedLoc.font_size = fontSize;
+      }
+      
+      // UI 업데이트
+      const box = document.querySelector(`.location-box[data-id="${selectedLoc.id}"]`);
+      if (box) {
+        const label = box.querySelector('.location-label');
+        if (label) {
+          label.style.fontSize = fontSize + 'px';
+        }
+      }
+    }
+    
+    // 데이터베이스에 저장
+    await saveAllLocations(false);
+    console.log(`${selectedLocations.length}개 위치의 글씨 크기가 ${fontSize}px로 변경되었습니다.`);
+  });
+  
+  // 일괄 크기 적용
+  document.getElementById('applySizeBtn').addEventListener('click', async () => {
+    if (selectedLocations.length === 0) {
+      alert('크기를 변경할 위치를 선택하세요.');
+      return;
+    }
+    
+    const batchWidthInput = document.getElementById('batchWidth');
+    const batchHeightInput = document.getElementById('batchHeight');
+    const newWidth = batchWidthInput.value ? parseInt(batchWidthInput.value) : null;
+    const newHeight = batchHeightInput.value ? parseInt(batchHeightInput.value) : null;
+    
+    if (newWidth === null && newHeight === null) {
+      alert('너비 또는 높이 중 하나 이상을 입력하세요.');
+      return;
+    }
+    
+    if (newWidth !== null && newWidth < 20) {
+      alert('너비는 최소 20px 이상이어야 합니다.');
+      return;
+    }
+    
+    if (newHeight !== null && newHeight < 20) {
+      alert('높이는 최소 20px 이상이어야 합니다.');
+      return;
+    }
+    
+    // 선택된 모든 위치의 크기 업데이트
+    for (const selectedLoc of selectedLocations) {
+      // locations 배열에서 해당 위치를 찾아서 업데이트
+      const loc = locations.find(l => l.id === selectedLoc.id);
+      if (loc) {
+        if (newWidth !== null) {
+          loc.width = newWidth;
+          selectedLoc.width = newWidth;
+        }
+        if (newHeight !== null) {
+          loc.height = newHeight;
+          selectedLoc.height = newHeight;
+        }
+      } else {
+        // locations 배열에 없으면 selectedLoc만 업데이트
+        if (newWidth !== null) {
+          selectedLoc.width = newWidth;
+        }
+        if (newHeight !== null) {
+          selectedLoc.height = newHeight;
+        }
+      }
+      
+      // UI 업데이트
+      const box = document.querySelector(`.location-box[data-id="${selectedLoc.id}"]`);
+      if (box) {
+        if (newWidth !== null) {
+          box.style.width = newWidth + 'px';
+        }
+        if (newHeight !== null) {
+          box.style.height = newHeight + 'px';
+        }
+      }
+    }
+    
+    // 데이터베이스에 저장
+    await saveAllLocations(false);
+    const sizeInfo = [];
+    if (newWidth !== null) sizeInfo.push(`너비: ${newWidth}px`);
+    if (newHeight !== null) sizeInfo.push(`높이: ${newHeight}px`);
+    console.log(`${selectedLocations.length}개 위치의 크기가 변경되었습니다. (${sizeInfo.join(', ')})`);
   });
   
   // 되돌리기
@@ -890,12 +1077,12 @@ function setupEventListeners() {
     saveToUndoStack();
     const minX = Math.min(...selectedLocations.map(l => l.x));
     selectedLocations.forEach(loc => {
-      loc.x = minX;
+      loc.x = Math.round(minX);
       const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
-      if (box) box.style.left = minX + 'px';
+      if (box) box.style.left = Math.round(minX) + 'px';
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('alignRightBtn').addEventListener('click', async () => {
@@ -903,12 +1090,13 @@ function setupEventListeners() {
     saveToUndoStack();
     const maxX = Math.max(...selectedLocations.map(l => l.x + l.width));
     selectedLocations.forEach(loc => {
-      loc.x = maxX - loc.width;
+      const newX = Math.round(maxX - loc.width);
+      loc.x = newX;
       const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
-      if (box) box.style.left = (maxX - loc.width) + 'px';
+      if (box) box.style.left = newX + 'px';
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('alignTopBtn').addEventListener('click', async () => {
@@ -921,7 +1109,7 @@ function setupEventListeners() {
       if (box) box.style.top = minY + 'px';
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('alignBottomBtn').addEventListener('click', async () => {
@@ -934,7 +1122,39 @@ function setupEventListeners() {
       if (box) box.style.top = (maxY - loc.height) + 'px';
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
+  });
+  
+  // 가로 중앙 정렬
+  document.getElementById('alignCenterHorizontalBtn').addEventListener('click', async () => {
+    if (selectedLocations.length < 2) return;
+    saveToUndoStack();
+    const minX = Math.min(...selectedLocations.map(l => l.x));
+    const maxX = Math.max(...selectedLocations.map(l => l.x + l.width));
+    const centerX = (minX + maxX) / 2;
+    selectedLocations.forEach(loc => {
+      loc.x = centerX - loc.width / 2;
+      const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
+      if (box) box.style.left = (centerX - loc.width / 2) + 'px';
+    });
+    updateBatchTools();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
+  });
+  
+  // 세로 중앙 정렬
+  document.getElementById('alignCenterVerticalBtn').addEventListener('click', async () => {
+    if (selectedLocations.length < 2) return;
+    saveToUndoStack();
+    const minY = Math.min(...selectedLocations.map(l => l.y));
+    const maxY = Math.max(...selectedLocations.map(l => l.y + l.height));
+    const centerY = (minY + maxY) / 2;
+    selectedLocations.forEach(loc => {
+      loc.y = centerY - loc.height / 2;
+      const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
+      if (box) box.style.top = (centerY - loc.height / 2) + 'px';
+    });
+    updateBatchTools();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('matchHeightBtn').addEventListener('click', async () => {
@@ -951,7 +1171,7 @@ function setupEventListeners() {
       }
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('matchWidthBtn').addEventListener('click', async () => {
@@ -968,47 +1188,79 @@ function setupEventListeners() {
       }
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('distributeHorizontalBtn').addEventListener('click', async () => {
     if (selectedLocations.length < 2) return;
     saveToUndoStack();
     const sorted = [...selectedLocations].sort((a, b) => a.x - b.x);
-    const firstX = sorted[0].x;
-    const lastX = sorted[sorted.length - 1].x;
-    const totalWidth = lastX - firstX;
-    const spacing = totalWidth / (sorted.length - 1);
+    const firstLeft = sorted[0].x;
+    const lastRight = sorted[sorted.length - 1].x + sorted[sorted.length - 1].width;
+    const totalWidth = lastRight - firstLeft;
     
+    // 모든 위치의 너비 합계 계산
+    const totalLocationsWidth = sorted.reduce((sum, loc) => sum + loc.width, 0);
+    
+    // 사용 가능한 공간 계산 (전체 너비 - 모든 위치의 너비)
+    const availableSpace = totalWidth - totalLocationsWidth;
+    
+    // 위치들 사이의 간격 계산
+    const spacing = availableSpace / (sorted.length - 1);
+    
+    // 첫 번째 위치는 그대로 두고, 나머지를 균등하게 배치
+    let currentX = firstLeft;
     sorted.forEach((loc, i) => {
-      if (i > 0) {
-        loc.x = firstX + (spacing * i);
+      if (i === 0) {
+        // 첫 번째 위치는 그대로
+        currentX = firstLeft + loc.width;
+      } else {
+        // 간격을 추가하고 위치 배치
+        currentX += spacing;
+        loc.x = Math.round(currentX);
+        currentX += loc.width;
         const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
         if (box) box.style.left = loc.x + 'px';
       }
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   document.getElementById('distributeVerticalBtn').addEventListener('click', async () => {
     if (selectedLocations.length < 2) return;
     saveToUndoStack();
     const sorted = [...selectedLocations].sort((a, b) => a.y - b.y);
-    const firstY = sorted[0].y;
-    const lastY = sorted[sorted.length - 1].y;
-    const totalHeight = lastY - firstY;
-    const spacing = totalHeight / (sorted.length - 1);
+    const firstTop = sorted[0].y;
+    const lastBottom = sorted[sorted.length - 1].y + sorted[sorted.length - 1].height;
+    const totalHeight = lastBottom - firstTop;
     
+    // 모든 위치의 높이 합계 계산
+    const totalLocationsHeight = sorted.reduce((sum, loc) => sum + loc.height, 0);
+    
+    // 사용 가능한 공간 계산 (전체 높이 - 모든 위치의 높이)
+    const availableSpace = totalHeight - totalLocationsHeight;
+    
+    // 위치들 사이의 간격 계산
+    const spacing = availableSpace / (sorted.length - 1);
+    
+    // 첫 번째 위치는 그대로 두고, 나머지를 균등하게 배치
+    let currentY = firstTop;
     sorted.forEach((loc, i) => {
-      if (i > 0) {
-        loc.y = firstY + (spacing * i);
+      if (i === 0) {
+        // 첫 번째 위치는 그대로
+        currentY = firstTop + loc.height;
+      } else {
+        // 간격을 추가하고 위치 배치
+        currentY += spacing;
+        loc.y = Math.round(currentY);
+        currentY += loc.height;
         const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
         if (box) box.style.top = loc.y + 'px';
       }
     });
     updateBatchTools();
-    await saveAllLocations();
+    await saveAllLocations(false); // 자동 저장이므로 alert 표시 안 함
   });
   
   // 그리드 옵션
@@ -1276,6 +1528,91 @@ function setupEventListeners() {
       });
     }
   });
+  
+  // 위치 코드 변경 시 실시간 업데이트
+  const editLocationCodeInput = document.getElementById('editLocationCode');
+  if (editLocationCodeInput) {
+    // input 이벤트: 타이핑하는 동안 실시간 업데이트
+    editLocationCodeInput.addEventListener('input', () => {
+      if (!selectedLocation && selectedLocations.length === 0) return;
+      
+      const code = editLocationCodeInput.value.trim();
+      if (!code) return;
+      
+      // 정규화된 코드로 업데이트
+      const normalizedCode = normalizeLocationCode(code);
+      
+      // 단일 선택된 경우
+      if (selectedLocation) {
+        selectedLocation.location_code = normalizedCode;
+        
+        // 박스의 라벨 업데이트
+        const box = document.querySelector(`.location-box[data-id="${selectedLocation.id}"]`);
+        if (box) {
+          const label = box.querySelector('.location-label');
+          if (label) {
+            label.textContent = normalizedCode;
+          }
+        }
+      }
+      
+      // 다중 선택된 경우 (첫 번째 선택된 위치만 업데이트)
+      if (selectedLocations.length > 0 && !selectedLocation) {
+        const firstLoc = selectedLocations[0];
+        firstLoc.location_code = normalizedCode;
+        
+        const box = document.querySelector(`.location-box[data-id="${firstLoc.id}"]`);
+        if (box) {
+          const label = box.querySelector('.location-label');
+          if (label) {
+            label.textContent = normalizedCode;
+          }
+        }
+      }
+    });
+    
+    // change 이벤트: 포커스를 잃을 때 정규화된 값으로 확정
+    editLocationCodeInput.addEventListener('change', () => {
+      if (!selectedLocation && selectedLocations.length === 0) return;
+      
+      const code = editLocationCodeInput.value.trim();
+      if (!code) return;
+      
+      // 정규화된 코드로 업데이트
+      const normalizedCode = normalizeLocationCode(code);
+      
+      // 입력 필드를 정규화된 값으로 업데이트
+      editLocationCodeInput.value = normalizedCode;
+      
+      // 단일 선택된 경우
+      if (selectedLocation) {
+        selectedLocation.location_code = normalizedCode;
+        
+        // 박스의 라벨 업데이트
+        const box = document.querySelector(`.location-box[data-id="${selectedLocation.id}"]`);
+        if (box) {
+          const label = box.querySelector('.location-label');
+          if (label) {
+            label.textContent = normalizedCode;
+          }
+        }
+      }
+      
+      // 다중 선택된 경우 (첫 번째 선택된 위치만 업데이트)
+      if (selectedLocations.length > 0 && !selectedLocation) {
+        const firstLoc = selectedLocations[0];
+        firstLoc.location_code = normalizedCode;
+        
+        const box = document.querySelector(`.location-box[data-id="${firstLoc.id}"]`);
+        if (box) {
+          const label = box.querySelector('.location-label');
+          if (label) {
+            label.textContent = normalizedCode;
+          }
+        }
+      }
+    });
+  }
 }
 
 // 위치 저장
@@ -1289,16 +1626,25 @@ async function saveLocation(loc, showAlert = false) {
     
     if (loc.isNew) {
       // 새 위치 생성
+      // font_size 컬럼이 없을 수 있으므로 기본 데이터만 저장
+      const insertData = {
+        location_code: loc.location_code,
+        x: roundedX,
+        y: roundedY,
+        width: roundedWidth,
+        height: roundedHeight,
+        status: loc.status
+      };
+      
+      // font_size가 있으면 포함 (컬럼이 있을 때만)
+      const fontSize = Math.round(loc.font_size || 13);
+      if (loc.font_size !== undefined && loc.font_size !== null) {
+        insertData.font_size = fontSize;
+      }
+      
       const { data, error } = await window.supabase
-        .from('wp1_locations')
-        .insert({
-          location_code: loc.location_code,
-          x: roundedX,
-          y: roundedY,
-          width: roundedWidth,
-          height: roundedHeight,
-          status: loc.status
-        })
+        .from('mx_locations')
+        .insert(insertData)
         .select()
         .single();
       
@@ -1319,19 +1665,40 @@ async function saveLocation(loc, showAlert = false) {
         box.style.top = roundedY + 'px';
         box.style.width = roundedWidth + 'px';
         box.style.height = roundedHeight + 'px';
+        // 위치 코드 라벨 업데이트
+        const label = box.querySelector('.location-label');
+        if (label) {
+          label.textContent = loc.location_code;
+          label.style.fontSize = fontSize + 'px';
+        }
+        // 상태 클래스도 업데이트
+        box.classList.remove('status-available', 'status-occupied', 'status-maintenance', 'status-disabled');
+        box.classList.add(`status-${loc.status || 'available'}`);
       }
+      
+      // 로컬 데이터에 font_size 업데이트
+      loc.font_size = fontSize;
     } else {
       // 기존 위치 업데이트
+      // font_size 컬럼이 없을 수 있으므로 기본 데이터만 저장
+      const updateData = {
+        location_code: loc.location_code,
+        x: roundedX,
+        y: roundedY,
+        width: roundedWidth,
+        height: roundedHeight,
+        status: loc.status
+      };
+      
+      // font_size가 있으면 포함 (컬럼이 있을 때만)
+      const fontSize = Math.round(loc.font_size || 13);
+      if (loc.font_size !== undefined && loc.font_size !== null) {
+        updateData.font_size = fontSize;
+      }
+      
       const { error } = await window.supabase
-        .from('wp1_locations')
-        .update({
-          location_code: loc.location_code,
-          x: roundedX,
-          y: roundedY,
-          width: roundedWidth,
-          height: roundedHeight,
-          status: loc.status
-        })
+        .from('mx_locations')
+        .update(updateData)
         .eq('id', loc.id);
       
       if (error) throw error;
@@ -1341,6 +1708,7 @@ async function saveLocation(loc, showAlert = false) {
       loc.y = roundedY;
       loc.width = roundedWidth;
       loc.height = roundedHeight;
+      loc.font_size = fontSize;
       
       // UI도 업데이트
       const box = document.querySelector(`.location-box[data-id="${loc.id}"]`);
@@ -1349,12 +1717,23 @@ async function saveLocation(loc, showAlert = false) {
         box.style.top = roundedY + 'px';
         box.style.width = roundedWidth + 'px';
         box.style.height = roundedHeight + 'px';
+        // 위치 코드 라벨도 업데이트
+        const label = box.querySelector('.location-label');
+        if (label) {
+          label.textContent = loc.location_code;
+          label.style.fontSize = fontSize + 'px';
+        }
+        // 상태 클래스도 업데이트
+        box.classList.remove('status-available', 'status-occupied', 'status-maintenance', 'status-disabled');
+        box.classList.add(`status-${loc.status || 'available'}`);
       }
     }
     
-    // 개별 저장일 때만 alert 표시
+    // 개별 저장일 때만 간단한 피드백 표시 (alert 대신 콘솔 로그)
     if (showAlert) {
-      alert('저장되었습니다.');
+      console.log('위치가 저장되었습니다:', loc.location_code);
+      // alert 대신 시각적 피드백 (선택사항)
+      // showToastMessage('저장되었습니다.');
     }
     
     // 위치 보기 페이지 새로고침 알림
@@ -1407,8 +1786,10 @@ async function saveAllLocations(showAlert = false) {
       }
     }
     
-    await loadLocations();
-    renderLocations();
+    // 저장 후 다시 로드하지 않음 (현재 상태 유지)
+    // 정렬/간격 분배 후에는 로드하지 않아야 변경사항이 유지됨
+    // await loadLocations();
+    // renderLocations();
     
     // 위치 보기 페이지 새로고침 알림
     try {
@@ -1854,41 +2235,38 @@ async function loadBackgroundElements() {
     
     // Supabase에서 로드
     const { data, error } = await window.supabase
-      .from('wp1_background_elements')
+      .from('mx_background_elements')
       .select('elements_data')
       .eq('id', 1)
       .single();
     
-    // Supabase에서 데이터를 성공적으로 가져왔고, 배열이 존재하며 비어있지 않은 경우
-    if (!error && data && data.elements_data && Array.isArray(data.elements_data) && data.elements_data.length > 0) {
+    // Supabase에서 데이터를 성공적으로 가져온 경우 (빈 배열도 허용)
+    if (!error && data && data.elements_data && Array.isArray(data.elements_data)) {
       backgroundElements = data.elements_data;
       console.log('Supabase에서 배경 요소 로드 완료:', backgroundElements.length, '개');
+      // 빈 배열이면 빈 배열로 유지 (기본값을 강제로 사용하지 않음)
       return;
     }
     
-    // Supabase에 데이터가 없거나 빈 배열이면 기본값 사용
-    backgroundElements = [
-      { id: 'bg1', type: 'rect', label: '왼쪽 세로 구역', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg2', type: 'rect', label: '하단 가로 구역', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg3', type: 'rect', label: 'LOADING DOCK 배경', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg4', type: 'text', label: 'LOADING DOCK', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
-    ];
-    await saveBackgroundElements();
+    // Supabase에 데이터가 없거나 에러가 발생한 경우에만 기본값 사용
+    // (빈 배열은 이미 위에서 처리됨)
+    if (error || !data || !data.elements_data) {
+      console.log('Supabase에 배경 요소 데이터가 없어 기본값 사용');
+      backgroundElements = [
+        { id: 'bg1', type: 'rect', label: '왼쪽 세로 구역', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+        { id: 'bg2', type: 'rect', label: '하단 가로 구역', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
+        { id: 'bg3', type: 'rect', label: 'LOADING DOCK 배경', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
+        { id: 'bg4', type: 'text', label: 'LOADING DOCK', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
+      ];
+      await saveBackgroundElements();
+    } else {
+      // 빈 배열인 경우
+      backgroundElements = [];
+    }
   } catch (error) {
     console.error('배경 요소 로드 실패:', error);
-    // 에러 발생 시 기본값 사용
-    backgroundElements = [
-      { id: 'bg1', type: 'rect', label: '왼쪽 세로 구역', x: 1, y: 1, width: 175, height: 575, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg2', type: 'rect', label: '하단 가로 구역', x: 177.5, y: 151, width: 480, height: 425, fill: '#d3d3d3', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg3', type: 'rect', label: 'LOADING DOCK 배경', x: 250, y: 120, width: 300, height: 25, fill: '#176687', stroke: '#000', strokeWidth: 1 },
-      { id: 'bg4', type: 'text', label: 'LOADING DOCK', text: 'LOADING DOCK', x: 400, y: 135, fontSize: 15, fill: '#fff' }
-    ];
-    // 기본값을 Supabase에 저장 시도 (에러는 무시)
-    try {
-      await saveBackgroundElements();
-    } catch (saveError) {
-      console.warn('기본 배경 요소 저장 실패 (무시):', saveError);
-    }
+    // 에러 발생 시 빈 배열로 초기화 (기본값을 강제로 사용하지 않음)
+    backgroundElements = [];
   }
 }
 
@@ -1922,7 +2300,7 @@ async function saveBackgroundElements() {
     
     // Supabase에 저장
     const { data, error } = await window.supabase
-      .from('wp1_background_elements')
+      .from('mx_background_elements')
       .upsert({
         id: 1,
         elements_data: normalizedElements
@@ -1940,7 +2318,7 @@ async function saveBackgroundElements() {
       
       // 저장 후 다시 읽어서 확인
       const { data: verifyData, error: verifyError } = await window.supabase
-        .from('wp1_background_elements')
+        .from('mx_background_elements')
         .select('elements_data')
         .eq('id', 1)
         .single();
@@ -2007,6 +2385,9 @@ function renderBackgroundElements() {
   });
   
   console.log('배경 요소 렌더링 완료');
+  
+  // 배경 요소 렌더링 후 캔버스 크기 조정
+  adjustCanvasSize();
 }
 
 // 배경 요소 생성
@@ -2340,7 +2721,12 @@ function setupKeyboardShortcuts() {
     // 복사 (Ctrl+C)
     if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
       e.preventDefault();
-      copySelectedLocations();
+      if (selectedLocations.length > 0 || selectedLocation) {
+        copySelectedLocations();
+        console.log('복사 완료:', clipboard?.length || 0, '개 위치');
+      } else {
+        console.warn('복사할 위치가 선택되지 않았습니다.');
+      }
       return;
     }
     
@@ -2550,7 +2936,7 @@ async function deleteSelectedLocations() {
   for (const loc of selectedLocations) {
     if (!loc.isNew) {
       const { error } = await window.supabase
-        .from('wp1_locations')
+        .from('mx_locations')
         .delete()
         .eq('id', loc.id);
       
@@ -2587,7 +2973,7 @@ async function deleteLocation() {
   // 데이터베이스에서 삭제
   if (!selectedLocation.isNew) {
     const { error } = await window.supabase
-      .from('wp1_locations')
+      .from('mx_locations')
       .delete()
       .eq('id', selectedLocation.id);
     
@@ -2614,14 +3000,16 @@ async function deleteBackground() {
   
   if (!confirm(`"${selectedBackground.label || '배경 요소'}"를 삭제하시겠습니까?`)) return;
   
-  // UI에서 제거
-  const element = document.querySelector(`.background-element[data-id="${selectedBackground.id}"]`);
-  if (element) element.remove();
-  
+  // 배열에서 제거
   backgroundElements = backgroundElements.filter(bg => bg.id !== selectedBackground.id);
   selectedBackground = null;
   document.getElementById('selectedBackgroundInfo').classList.add('hidden');
+  
+  // Supabase에 저장 (빈 배열도 저장)
   await saveBackgroundElements();
+  
+  // 화면 다시 렌더링
+  renderBackgroundElements();
 }
 
 // ==================== 줌/패닝 기능 ====================
@@ -2728,19 +3116,30 @@ function applyTransform() {
 
 // ==================== 복사/붙여넣기 기능 ====================
 function copySelectedLocations() {
+  // selectedLocations가 비어있으면 selectedLocation 확인
+  let locationsToCopy = [];
+  
   if (selectedLocations.length > 0) {
-    clipboard = selectedLocations.map(loc => ({
+    locationsToCopy = selectedLocations;
+  } else if (selectedLocation) {
+    // 단일 선택된 위치를 복사
+    locationsToCopy = [selectedLocation];
+  } else {
+    console.warn('복사할 위치가 선택되지 않았습니다.');
+    return false;
+  }
+  
+  if (locationsToCopy.length > 0) {
+    clipboard = locationsToCopy.map(loc => ({
       ...loc,
       id: undefined, // 새 ID 생성
       isNew: true
     }));
-  } else if (selectedLocation) {
-    clipboard = [{
-      ...selectedLocation,
-      id: undefined,
-      isNew: true
-    }];
+    console.log(`${locationsToCopy.length}개 위치가 복사되었습니다.`);
+    return true;
   }
+  
+  return false;
 }
 
 async function pasteLocations() {
@@ -2988,7 +3387,10 @@ function setupContextMenu() {
 async function handleContextMenuAction(action) {
   switch (action) {
     case 'copy':
-      copySelectedLocations();
+      const copied = copySelectedLocations();
+      if (copied) {
+        console.log('우클릭 메뉴에서 복사 완료:', clipboard?.length || 0, '개 위치');
+      }
       break;
     case 'paste':
       await pasteLocations();

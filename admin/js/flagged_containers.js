@@ -78,7 +78,7 @@ async function loadFlaggedContainers() {
   
   tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4">로딩 중...</td></tr>';
   
-  let query = supabase.from('flagged_containers').select('*');
+  let query = supabase.from('mx_flagged_containers').select('*');
   
   const { data, error } = await query.order('created_at', { ascending: false });
   if (error) {
@@ -169,7 +169,7 @@ function setupContainerForm() {
       highlight_color: highlightColor
     };
     
-    const { error } = await supabase.from('flagged_containers').insert(containerData);
+    const { error } = await supabase.from('mx_flagged_containers').insert(containerData);
     if (error) {
       if (error.code === '23505') {
         alert('이미 등록된 컨테이너 번호입니다.');
@@ -224,7 +224,7 @@ function setupContainerTable() {
       const containerNo = e.target.closest('tr').querySelector('td:nth-child(2)').textContent.trim();
       if (!confirm(`정말 "${containerNo}" 컨테이너를 삭제하시겠습니까?`)) return;
       
-      const { error } = await supabase.from('flagged_containers').delete().eq('id', id);
+      const { error } = await supabase.from('mx_flagged_containers').delete().eq('id', id);
       if (error) {
         alert('삭제 실패: ' + error.message);
         return;
@@ -329,7 +329,7 @@ function showEditModal(id, containerNo, reason, currentColor) {
     };
     
     const { error } = await window.supabase
-      .from('flagged_containers')
+      .from('mx_flagged_containers')
       .update(updateData)
       .eq('id', id);
     

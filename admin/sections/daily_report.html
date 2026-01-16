@@ -152,6 +152,44 @@
     .action-btn.save:hover {
       background: #e0a800;
     }
+    .weekly-summary {
+      background: #f8f9fa;
+      border: 2px solid #dee2e6;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .weekly-summary h3 {
+      font-size: 1.3em;
+      margin-bottom: 15px;
+      color: #495057;
+    }
+    .weekly-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+    .weekly-table th,
+    .weekly-table td {
+      border: 1px solid #dee2e6;
+      padding: 12px;
+      text-align: center;
+    }
+    .weekly-table th {
+      background: #2563eb;
+      color: white;
+      font-weight: bold;
+    }
+    .weekly-table tbody tr:hover {
+      background: #f1f3f5;
+    }
+    .weekly-table tbody tr.today {
+      background: #fff3cd;
+      font-weight: bold;
+    }
+    .weekly-table tbody tr.today:hover {
+      background: #ffe69c;
+    }
     @media print {
       .container, .print-table-wrapper, .print-table-wrapper table {
         display: block !important;
@@ -232,6 +270,24 @@
       <div class="remarks-section">
         <h3>📝 특이사항 및 비고</h3>
         <textarea id="remarks-input" placeholder="특이사항을 입력하세요..."></textarea>
+      </div>
+      
+      <!-- 금주 일별 현황 -->
+      <div class="weekly-summary">
+        <h3>📊 금주 일별 현황</h3>
+        <table class="weekly-table">
+          <thead>
+            <tr>
+              <th>날짜</th>
+              <th>입고</th>
+              <th>출고</th>
+              <th>재고</th>
+            </tr>
+          </thead>
+          <tbody id="weekly-summary-body">
+            <!-- 데이터는 JS로 채움 -->
+          </tbody>
+        </table>
       </div>
       
       <div class="action-buttons non-print" id="action-buttons">

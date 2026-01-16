@@ -160,6 +160,9 @@ async function loadDailyReport(date) {
   // 요약 통계 계산 및 업데이트
   await updateSummaryDashboard(date, receiving, expandedShipping);
   
+  // 금주 일별 현황 업데이트
+  await updateWeeklySummary(date);
+  
   renderDailyReportTable(date);
 }
 
@@ -665,6 +668,95 @@ function captureSummary() {
 
 // 전역 함수로 노출
 window.captureSummary = captureSummary;
+
+// 금주 일별 현황 업데이트 함수
+async function updateWeeklySummary(selectedDate) {
+  // 선택된 날짜가 속한 주의 월요일과 일요일 계산
+  const date = new Date(selectedDate);
+  const dayOfWeek = date.getDay(); // 0(일요일) ~ 6(토요일)
+  const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 월요일로 조정
+  
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diff);
+  
+  const weekDates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    weekDates.push(d.toISOString().slice(0, 10));
+  }
+  
+  // 각 날짜별 데이터 조회
+  const weeklyData = [];
+  let cumulativeStock = 0;
+  
+  // 해당 주 시작 전의 재고 계산 (월요일 이전의 전체 재고)
+  const { data: itemsBeforeWeek } = await supabase
+    .from('mx_receiving_items')
+    .select('container_no, location_code, created_at')
+    .lt('created_at', monday.toISOString());
+  
+  // 주 시작 전 재고 계산
+  if (itemsBeforeWeek) {
+    const stockBeforeWeek = new Set(
+      itemsBeforeWeek
+        .filter(item => item.location_code && item.location_code.trim() !== '')
+        .map(item => item.container_no)
+    ).size;
+    cumulativeStock = stockBeforeWeek;
+  }
+  
+  for (const dateStr of weekDates) {
+    // 입고 조회
+    const { data: plans } = await supabase
+      .from('mx_receiving_plan')
+      .select('container_no')
+      .eq('receive_date', dateStr);
+    
+    const inCount = new Set((plans || []).map(p => p.container_no)).size;
+    
+    // 출고 조회 (shipping_date 기준)
+    const { data: shipping } = await supabase
+      .from('mx_shipping_instruction')
+      .select('container_no')
+      .eq('shipping_date', dateStr);
+    
+    const outCount = new Set((shipping || []).map(s => s.container_no)).size;
+    
+    // 재고는 누적 계산
+    cumulativeStock = cumulativeStock + inCount - outCount;
+    
+    weeklyData.push({
+      date: dateStr,
+      in: inCount,
+      out: outCount,
+      stock: cumulativeStock
+    });
+  }
+  
+  // 테이블 렌더링
+  const tbody = document.getElementById('weekly-summary-body');
+  if (!tbody) return;
+  
+  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  tbody.innerHTML = weeklyData.map((item, index) => {
+    const isToday = item.date === selectedDate;
+    const dateObj = new Date(item.date);
+    const formatted = `${item.date.split('-')[1]}/${item.date.split('-')[2]} (${weekdays[index]})`;
+    
+    return `
+      <tr class="${isToday ? 'today' : ''}">
+        <td>${formatted}</td>
+        <td>${item.in}대</td>
+        <td>${item.out}대</td>
+        <td>${item.stock}대</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// 전역 함수로 노출
+window.updateWeeklySummary = updateWeeklySummary;
 
 // 요약 대시보드 인쇄 함수
 function printSummary() {

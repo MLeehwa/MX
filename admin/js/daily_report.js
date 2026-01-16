@@ -29,6 +29,50 @@ export async function initSection() {
       loadDailyReport(dateInput.value);
     });
   }
+
+  // 요약 대시보드 버튼 이벤트
+  const captureBtn = document.getElementById('capture-btn');
+  if (captureBtn) {
+    captureBtn.onclick = captureSummary;
+    console.log('캡쳐 버튼 이벤트 등록 완료');
+  }
+
+  // 저장 버튼 이벤트
+  const saveRemarksBtn = document.getElementById('save-remarks-btn');
+  if (saveRemarksBtn) {
+    saveRemarksBtn.onclick = function() {
+      console.log('💾 저장 버튼 클릭됨!');
+      window.saveRemarks();
+    };
+    console.log('✅ 저장 버튼 이벤트 등록 완료');
+  } else {
+    console.error('❌ 저장 버튼을 찾을 수 없습니다');
+  }
+
+  // 특이사항 자동 로드 (localStorage에서)
+  const remarksInput = document.getElementById('remarks-input');
+  if (remarksInput && dateInput) {
+    window.loadRemarks(dateInput.value);
+    console.log('✅ 특이사항 자동 로드 완료');
+    
+    // 날짜 변경 시에도 로드
+    const originalChangeHandler = dateInput.onchange;
+    dateInput.addEventListener('change', (e) => {
+      console.log('📅 날짜 변경됨:', e.target.value);
+      window.loadRemarks(e.target.value);
+    });
+  } else {
+    console.error('❌ 특이사항 입력란 또는 날짜 입력란을 찾을 수 없습니다');
+  }
+  
+  // html2canvas 로드 확인
+  setTimeout(() => {
+    if (typeof html2canvas !== 'undefined') {
+      console.log('✅ html2canvas 로드 성공');
+    } else {
+      console.error('❌ html2canvas 로드 실패');
+    }
+  }, 1000);
 }
 
 async function loadDailyReport(date) {
@@ -112,6 +156,10 @@ async function loadDailyReport(date) {
 
   lastReceiving = receiving || [];
   lastShipping = expandedShipping || [];
+  
+  // 요약 통계 계산 및 업데이트
+  await updateSummaryDashboard(date, receiving, expandedShipping);
+  
   renderDailyReportTable(date);
 }
 
@@ -424,4 +472,276 @@ if (document.querySelector('.print-btn')) {
     win.document.write('<html><head><title>인쇄</title>' + printStyle + '</head><body>' + clone.outerHTML + '<script>window.print();setTimeout(()=>window.close(),100);<\/script></body></html>');
     win.document.close();
   };
+}
+
+// 요약 대시보드 업데이트 함수
+async function updateSummaryDashboard(date, receiving, shipping) {
+  // 날짜 표시
+  const summaryDateEl = document.getElementById('summary-date');
+  if (summaryDateEl) {
+    const dateObj = new Date(date);
+    const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+    const formatted = `${date} (${weekdays[dateObj.getDay()]})`;
+    summaryDateEl.textContent = formatted;
+  }
+
+  // 오늘 입고 수량 (고유 컨테이너 수)
+  const todayInCount = new Set(receiving.map(r => r.container_no)).size;
+  const todayInEl = document.getElementById('today-in-count');
+  if (todayInEl) todayInEl.textContent = todayInCount;
+
+  // 오늘 출고 수량 (고유 컨테이너 수)
+  const todayOutCount = new Set(shipping.map(s => s.container_no)).size;
+  const todayOutEl = document.getElementById('today-out-count');
+  if (todayOutEl) todayOutEl.textContent = todayOutCount;
+
+  // 현재 재고 현황 (전체 receiving_items에서 location_code가 있는 항목 수)
+  const { data: allItems, error } = await supabase
+    .from('mx_receiving_items')
+    .select('container_no, location_code');
+  
+  if (!error && allItems) {
+    // location_code가 있고 비어있지 않은 고유 컨테이너 수
+    const stockCount = new Set(
+      allItems
+        .filter(item => item.location_code && item.location_code.trim() !== '')
+        .map(item => item.container_no)
+    ).size;
+    
+    const stockEl = document.getElementById('current-stock');
+    if (stockEl) stockEl.textContent = stockCount;
+  }
+}
+
+// 특이사항 저장 함수 (Supabase DB 사용)
+async function saveRemarks() {
+  console.log('💾 saveRemarks 함수 호출됨');
+  const date = document.getElementById('report-date').value;
+  const remarks = document.getElementById('remarks-input').value;
+  
+  console.log('저장 데이터:', { date, remarks });
+  
+  if (!date) {
+    alert('날짜를 선택해주세요.');
+    return;
+  }
+  
+  try {
+    // 기존 데이터 확인
+    const { data: existing } = await supabase
+      .from('mx_daily_report_remarks')
+      .select('id')
+      .eq('report_date', date)
+      .maybeSingle();
+    
+    let result;
+    if (existing) {
+      // 업데이트
+      result = await supabase
+        .from('mx_daily_report_remarks')
+        .update({ remarks: remarks })
+        .eq('report_date', date);
+      console.log('✅ DB 업데이트 완료');
+    } else {
+      // 삽입
+      result = await supabase
+        .from('mx_daily_report_remarks')
+        .insert({ report_date: date, remarks: remarks });
+      console.log('✅ DB 삽입 완료');
+    }
+    
+    if (result.error) throw result.error;
+    
+    alert('특이사항이 저장되었습니다.');
+  } catch (error) {
+    console.error('❌ 저장 실패:', error);
+    alert('저장에 실패했습니다:\n' + error.message);
+  }
+}
+
+// 전역 함수로 노출
+window.saveRemarks = saveRemarks;
+
+// 특이사항 로드 함수 (Supabase DB에서)
+async function loadRemarks(date) {
+  console.log('📖 loadRemarks 함수 호출됨:', date);
+  if (!date) {
+    console.log('⚠️ 날짜가 없어서 로드 중단');
+    return;
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from('mx_daily_report_remarks')
+      .select('remarks')
+      .eq('report_date', date)
+      .maybeSingle();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    const remarks = data?.remarks || '';
+    console.log('📦 DB에서 로드:', { date, remarks });
+    
+    const remarksInput = document.getElementById('remarks-input');
+    if (remarksInput) {
+      remarksInput.value = remarks;
+      console.log('✅ 특이사항 입력란에 설정 완료');
+    } else {
+      console.error('❌ 특이사항 입력란(#remarks-input)을 찾을 수 없음');
+    }
+  } catch (error) {
+    console.error('❌ 로드 실패:', error);
+    // 오류가 있어도 빈 값으로 설정
+    const remarksInput = document.getElementById('remarks-input');
+    if (remarksInput) remarksInput.value = '';
+  }
+}
+
+// 전역 함수로 노출
+window.loadRemarks = loadRemarks;
+
+// 요약 대시보드 캡쳐 함수
+function captureSummary() {
+  console.log('캡쳐 함수 호출됨');
+  
+  const dashboard = document.getElementById('summary-dashboard');
+  if (!dashboard) {
+    alert('캡쳐할 대시보드를 찾을 수 없습니다.');
+    return;
+  }
+
+  // html2canvas 로드 확인
+  if (typeof html2canvas === 'undefined') {
+    alert('캡쳐 라이브러리가 로드되지 않았습니다.\n페이지를 새로고침 해주세요.');
+    console.error('html2canvas is not loaded');
+    return;
+  }
+
+  console.log('캡쳐 시작...');
+  
+  // html2canvas를 사용하여 캡쳐
+  html2canvas(dashboard, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    logging: false,
+    useCORS: true
+  }).then(canvas => {
+    console.log('캡쳐 완료, 다운로드 시작...');
+
+    // 이미지로 다운로드
+    const date = document.getElementById('report-date').value;
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        alert('이미지 생성에 실패했습니다.');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `일일리포트_${date}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log('다운로드 완료!');
+      alert('캡쳐 완료!');
+    }, 'image/png');
+  }).catch(error => {
+    console.error('캡쳐 실패:', error);
+    alert('캡쳐에 실패했습니다:\n' + error.message);
+  });
+}
+
+// 전역 함수로 노출
+window.captureSummary = captureSummary;
+
+// 요약 대시보드 인쇄 함수
+function printSummary() {
+  const dashboard = document.getElementById('summary-dashboard');
+  if (!dashboard) {
+    alert('인쇄할 대시보드를 찾을 수 없습니다.');
+    return;
+  }
+
+  const clone = dashboard.cloneNode(true);
+  // 버튼 제거
+  const buttons = clone.querySelector('.action-buttons');
+  if (buttons) buttons.remove();
+
+  const printStyle = `
+    <style>
+      @page { size: A4 portrait; margin: 1cm; }
+      body { font-family: 'Malgun Gothic', '맑은 고딕', Arial, sans-serif; }
+      .summary-dashboard {
+        background: white;
+        padding: 30px;
+      }
+      .summary-title {
+        text-align: center;
+        font-size: 2em;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .summary-date {
+        text-align: center;
+        font-size: 1.3em;
+        color: #666;
+        margin-bottom: 30px;
+      }
+      .summary-cards {
+        display: flex;
+        justify-content: space-around;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+      .summary-card {
+        flex: 1;
+        background: #f8f9fa;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+      }
+      .summary-card h3 {
+        font-size: 1.3em;
+        margin-bottom: 15px;
+        color: #495057;
+      }
+      .summary-card .number {
+        font-size: 3em;
+        font-weight: bold;
+        color: #2563eb;
+      }
+      .summary-card .unit {
+        font-size: 1.2em;
+        color: #6c757d;
+      }
+      .remarks-section {
+        background: #f8f9fa;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 20px;
+      }
+      .remarks-section h3 {
+        font-size: 1.3em;
+        margin-bottom: 15px;
+        color: #495057;
+      }
+      .remarks-section textarea {
+        width: 100%;
+        min-height: 150px;
+        padding: 10px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        font-size: 1.1em;
+        background: white;
+      }
+    </style>
+  `;
+
+  const win = window.open('', '_blank', 'width=800,height=600');
+  win.document.write('<html><head><title>일일 리포트</title>' + printStyle + '</head><body>' + clone.outerHTML + '<script>window.print();setTimeout(()=>window.close(),500);<\/script></body></html>');
+  win.document.close();
 } 

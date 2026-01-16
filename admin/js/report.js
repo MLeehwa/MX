@@ -228,37 +228,48 @@ export async function loadReport() {
       properties: { tabColor: { argb: 'FF4472C4' } }
     });
 
-    // 시트1 헤더 및 컬럼 정의 (Container 단위)
+    // 컬럼 너비 설정
     ws1.columns = [
-      { header: 'NO.', key: 'no', width: 6 },
-      { header: 'CONTAINER NO.', key: 'container', width: 20 },
-      { header: '제품 정보', key: 'part', width: 20 },
-      { header: 'IN DATE', key: 'in_date', width: 12 },
-      { header: 'OUT DATE', key: 'out_date', width: 12 },
-      { header: 'FROM', key: 'from', width: 12 },
-      { header: 'LOCATION', key: 'location', width: 10 },
-      { header: 'DURATION', key: 'duration', width: 10 },
-      { header: 'STATUS', key: 'status', width: 12 },
-      { header: 'REMARK', key: 'remark', width: 30 }
+      { width: 6 },
+      { width: 20 },
+      { width: 20 },
+      { width: 12 },
+      { width: 12 },
+      { width: 12 },
+      { width: 10 },
+      { width: 10 },
+      { width: 12 },
+      { width: 30 }
     ];
 
-    // 시트1 헤더 스타일
-    const headerRow1 = ws1.getRow(1);
-    headerRow1.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-    headerRow1.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF4472C4' }
-    };
-    headerRow1.alignment = { vertical: 'middle', horizontal: 'center' };
+    // 1행: 제목 추가
+    ws1.getCell('A1').value = 'LHM Pesqueria Hub Report';
+    ws1.mergeCells('A1:J1');
+    const titleRow = ws1.getRow(1);
+    titleRow.font = { bold: true, size: 16, color: { argb: 'FF000000' } };
+    titleRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleRow.height = 35;
+
+    // 3행: 헤더 추가
+    const headerRow1 = ws1.getRow(3);
+    headerRow1.values = ['NO.', 'CONTAINER NO.', '제품 정보', 'IN DATE', 'OUT DATE', 'FROM', 'LOCATION', 'DURATION', 'STATUS', 'REMARK'];
     headerRow1.height = 30;
-    headerRow1.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF000000' } },
-        bottom: { style: 'thin', color: { argb: 'FF000000' } },
-        left: { style: 'thin', color: { argb: 'FF000000' } },
-        right: { style: 'thin', color: { argb: 'FF000000' } }
-      };
+    headerRow1.eachCell((cell, colNumber) => {
+      if (colNumber <= 10) { // J열까지만
+        cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF4472C4' }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        };
+      }
     });
 
     // 필터 입력값 확인
@@ -362,31 +373,33 @@ export async function loadReport() {
         ? flaggedContainerReasonMap.get(normalizedContainerNo) 
         : '';
       
-      ws1.addRow({
-        no: idx + 1,
-        container: row.container_no,
-        part: row.remark || '-',
-        in_date: formatDate(row.in_date),
-        out_date: formatDate(row.out_date),
-        from: row.receiving_place || '',
-        location: row.location_code || '',
-        duration: duration,
-        status: row.status,
-        remark: remark
-      });
-      // 데이터 행에도 모든 셀에 테두리 추가
+      ws1.addRow([
+        idx + 1,
+        row.container_no,
+        row.remark || '-',
+        formatDate(row.in_date),
+        formatDate(row.out_date),
+        row.receiving_place || '',
+        row.location_code || '',
+        duration,
+        row.status,
+        remark
+      ]);
+      // 데이터 행에도 모든 셀에 테두리 추가 (J열까지만)
       const dataRow = ws1.getRow(ws1.rowCount);
       dataRow.eachCell((cell, colNumber) => {
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } }
-        };
-        if (colNumber === 10) { // REMARK 컬럼
-          cell.alignment = { vertical: 'middle', horizontal: 'left' };
-        } else {
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (colNumber <= 10) { // J열까지만
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } }
+          };
+          if (colNumber === 10) { // REMARK 컬럼
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          }
         }
       });
       // flagged_containers에 등록된 컨테이너인 경우 선택된 색상으로 음영 적용
@@ -399,28 +412,32 @@ export async function loadReport() {
         // #RRGGBB 형식을 ARGB 형식으로 변환 (FF + RRGGBB)
         const argbColor = 'FF' + highlightColor.replace('#', '');
         
-        dataRow.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: argbColor }
-          };
+        dataRow.eachCell((cell, colNumber) => {
+          if (colNumber <= 10) { // J열까지만
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: argbColor }
+            };
+          }
         });
       } else if (idx % 2 === 1) {
-        // 기존 로직: 짝수 행에 회색 음영
-        dataRow.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFF2F2F2' }
-          };
+        // 기존 로직: 짝수 행에 회색 음영 (J열까지만)
+        dataRow.eachCell((cell, colNumber) => {
+          if (colNumber <= 10) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFF2F2F2' }
+            };
+          }
         });
       }
     });
 
     ws1.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: 11 }
+      from: { row: 3, column: 1 },
+      to: { row: 3, column: 10 }
     };
 
     // 시트2: TODAY INOUT (오늘 입고/출고 내역)
@@ -445,31 +462,46 @@ export async function loadReport() {
     const ws2 = workbook.addWorksheet('TODAY INOUT', {
       properties: { tabColor: { argb: 'FFFFC000' } }
     });
+    
+    // 컬럼 너비 설정
     ws2.columns = [
-      { header: 'NO.', key: 'no', width: 8 },
-      { header: 'TYPE', key: 'type', width: 10 },
-      { header: 'CONTAINER NO.', key: 'container', width: 20 },
-      { header: '제품 정보', key: 'part', width: 20 },
-      { header: 'DATE', key: 'date', width: 15 },
-      { header: 'LOCATION', key: 'location', width: 15 },
-      { header: 'REMARKS', key: 'remarks', width: 15 }
+      { width: 8 },
+      { width: 10 },
+      { width: 20 },
+      { width: 20 },
+      { width: 15 },
+      { width: 15 },
+      { width: 15 }
     ];
-    const headerRow2 = ws2.getRow(1);
-    headerRow2.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-    headerRow2.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFC000' }
-    };
-    headerRow2.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // 1행: 제목 추가
+    ws2.getCell('A1').value = 'LHM Pesqueria Hub Report';
+    ws2.mergeCells('A1:G1');
+    const titleRow2 = ws2.getRow(1);
+    titleRow2.font = { bold: true, size: 16, color: { argb: 'FF000000' } };
+    titleRow2.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleRow2.height = 35;
+
+    // 3행: 헤더 추가
+    const headerRow2 = ws2.getRow(3);
+    headerRow2.values = ['NO.', 'TYPE', 'CONTAINER NO.', '제품 정보', 'DATE', 'LOCATION', 'REMARKS'];
     headerRow2.height = 30;
-    headerRow2.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF000000' } },
-        bottom: { style: 'thin', color: { argb: 'FF000000' } },
-        left: { style: 'thin', color: { argb: 'FF000000' } },
-        right: { style: 'thin', color: { argb: 'FF000000' } }
-      };
+    headerRow2.eachCell((cell, colNumber) => {
+      if (colNumber <= 7) { // G열까지만
+        cell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFC000' }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        };
+      }
     });
     // 오늘 날짜(YYYY-MM-DD)
     const todayStrYMD = today.toISOString().slice(0,10);
@@ -517,38 +549,42 @@ export async function loadReport() {
       return 0;
     });
     todayInRows.forEach((row, idx) => {
-      const dataRow = ws2.addRow({
-        no: idx + 1,
-        type: row.type,
-        container: row.container,
-        part: row.part,
-        date: row.date,
-        location: row.location,
-        remarks: row.remarks
-      });
+      const dataRow = ws2.addRow([
+        idx + 1,
+        row.type,
+        row.container,
+        row.part,
+        row.date,
+        row.location,
+        row.remarks
+      ]);
       dataRow.height = 25;
       dataRow.eachCell((cell, colNumber) => {
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FF000000' } },
-          bottom: { style: 'thin', color: { argb: 'FF000000' } },
-          left: { style: 'thin', color: { argb: 'FF000000' } },
-          right: { style: 'thin', color: { argb: 'FF000000' } }
-        };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (colNumber <= 7) { // G열까지만
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FF000000' } },
+            bottom: { style: 'thin', color: { argb: 'FF000000' } },
+            left: { style: 'thin', color: { argb: 'FF000000' } },
+            right: { style: 'thin', color: { argb: 'FF000000' } }
+          };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        }
       });
       if (idx % 2 === 1) {
-        dataRow.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFFFF2CC' }
-          };
+        dataRow.eachCell((cell, colNumber) => {
+          if (colNumber <= 7) { // G열까지만
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFFF2CC' }
+            };
+          }
         });
       }
     });
     ws2.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: 7 }
+      from: { row: 3, column: 1 },
+      to: { row: 3, column: 7 }
     };
 
     // 파일 다운로드

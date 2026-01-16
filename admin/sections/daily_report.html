@@ -234,7 +234,8 @@
         <textarea id="remarks-input" placeholder="특이사항을 입력하세요..."></textarea>
       </div>
       
-      <div class="action-buttons non-print">
+      <div class="action-buttons non-print" id="action-buttons">
+        <button class="action-btn capture" id="capture-btn" onclick="window.captureSummary()">📸 캡쳐하기</button>
         <button class="action-btn save" id="save-remarks-btn" onclick="window.saveRemarks()">💾 저장하기</button>
       </div>
     </div>

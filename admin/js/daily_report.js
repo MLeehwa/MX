@@ -604,9 +604,11 @@ window.loadRemarks = loadRemarks;
 
 // 요약 대시보드 캡쳐 함수
 function captureSummary() {
-  console.log('캡쳐 함수 호출됨');
+  console.log('📸 캡쳐 함수 호출됨');
   
   const dashboard = document.getElementById('summary-dashboard');
+  const buttons = document.getElementById('action-buttons');
+  
   if (!dashboard) {
     alert('캡쳐할 대시보드를 찾을 수 없습니다.');
     return;
@@ -621,6 +623,9 @@ function captureSummary() {
 
   console.log('캡쳐 시작...');
   
+  // 캡쳐 전에 버튼 숨기기
+  if (buttons) buttons.style.display = 'none';
+  
   // html2canvas를 사용하여 캡쳐
   html2canvas(dashboard, {
     backgroundColor: '#ffffff',
@@ -629,6 +634,9 @@ function captureSummary() {
     useCORS: true
   }).then(canvas => {
     console.log('캡쳐 완료, 다운로드 시작...');
+    
+    // 캡쳐 후 버튼 다시 보이기
+    if (buttons) buttons.style.display = 'flex';
 
     // 이미지로 다운로드
     const date = document.getElementById('report-date').value;
@@ -645,11 +653,12 @@ function captureSummary() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      console.log('다운로드 완료!');
-      alert('캡쳐 완료!');
+      console.log('✅ 다운로드 완료!');
     }, 'image/png');
   }).catch(error => {
-    console.error('캡쳐 실패:', error);
+    // 오류 시에도 버튼 다시 보이기
+    if (buttons) buttons.style.display = 'flex';
+    console.error('❌ 캡쳐 실패:', error);
     alert('캡쳐에 실패했습니다:\n' + error.message);
   });
 }

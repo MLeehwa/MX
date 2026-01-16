@@ -19,16 +19,16 @@
       width: 100%;
     }
     label, input, button { font-size: 1.5em; }
-    button { background: #2563eb; color: #fff; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    .print-btn { background: #059669; margin-left: 10px; }
-    .print-btn:hover { background: #047857; }
+    button { background: #1e40af; color: #fff; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1e3a8a; }
+    .print-btn { background: #0e7490; margin-left: 10px; }
+    .print-btn:hover { background: #155e75; }
     .print-table-wrapper {
       margin-top: 30px;
       width: 100%;
       max-width: 100%;
     }
-    th { background: #2563eb !important; color: #fff !important; }
+    th { background: #1e40af !important; color: #fff !important; }
     /* 확인, 시간, 메모 컬럼 2배 넓히기 */
     td:nth-child(8), th:nth-child(8),
     td:nth-child(9), th:nth-child(9),
@@ -58,18 +58,19 @@
       border-radius: 8px;
       padding: 30px;
       margin: 30px 0;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     .summary-title {
       text-align: center;
       font-size: 2em;
       font-weight: bold;
       margin-bottom: 10px;
+      color: #1e293b;
     }
     .summary-date {
       text-align: center;
       font-size: 1.3em;
-      color: #666;
+      color: #475569;
       margin-bottom: 30px;
     }
     .summary-cards {
@@ -80,8 +81,8 @@
     }
     .summary-card {
       flex: 1;
-      background: #f8f9fa;
-      border: 2px solid #dee2e6;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
       border-radius: 8px;
       padding: 20px;
       text-align: center;
@@ -89,20 +90,20 @@
     .summary-card h3 {
       font-size: 1.3em;
       margin-bottom: 15px;
-      color: #495057;
+      color: #334155;
     }
     .summary-card .number {
       font-size: 3em;
       font-weight: bold;
-      color: #2563eb;
+      color: #1e40af;
     }
     .summary-card .unit {
       font-size: 1.2em;
-      color: #6c757d;
+      color: #64748b;
     }
     .remarks-section {
-      background: #f8f9fa;
-      border: 2px solid #dee2e6;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
       border-radius: 8px;
       padding: 20px;
       margin-bottom: 20px;
@@ -110,13 +111,13 @@
     .remarks-section h3 {
       font-size: 1.3em;
       margin-bottom: 15px;
-      color: #495057;
+      color: #334155;
     }
     .remarks-section textarea {
       width: 100%;
       min-height: 150px;
       padding: 10px;
-      border: 1px solid #ced4da;
+      border: 1px solid #cbd5e1;
       border-radius: 4px;
       font-size: 1.1em;
       resize: vertical;
@@ -128,7 +129,7 @@
       margin-bottom: 30px;
     }
     .action-btn {
-      background: #28a745;
+      background: #0e7490;
       color: white;
       border: none;
       padding: 12px 30px;
@@ -137,24 +138,24 @@
       cursor: pointer;
     }
     .action-btn:hover {
-      background: #218838;
+      background: #155e75;
     }
     .action-btn.capture {
-      background: #17a2b8;
+      background: #0e7490;
     }
     .action-btn.capture:hover {
-      background: #138496;
+      background: #155e75;
     }
     .action-btn.save {
-      background: #ffc107;
-      color: #000;
+      background: #f59e0b;
+      color: white;
     }
     .action-btn.save:hover {
-      background: #e0a800;
+      background: #d97706;
     }
     .weekly-summary {
-      background: #f8f9fa;
-      border: 2px solid #dee2e6;
+      background: #f8fafc;
+      border: 2px solid #e2e8f0;
       border-radius: 8px;
       padding: 20px;
       margin-top: 20px;
@@ -162,7 +163,7 @@
     .weekly-summary h3 {
       font-size: 1.3em;
       margin-bottom: 15px;
-      color: #495057;
+      color: #334155;
     }
     .weekly-table {
       width: 100%;
@@ -171,29 +172,29 @@
     }
     .weekly-table th,
     .weekly-table td {
-      border: 1px solid #dee2e6;
+      border: 1px solid #e2e8f0;
       padding: 12px;
       text-align: center;
     }
     .weekly-table th {
-      background: #2563eb;
+      background: #1e40af;
       color: white;
       font-weight: bold;
     }
     .weekly-table tbody tr th {
-      background: #2563eb;
+      background: #1e40af;
       color: white;
       font-weight: bold;
       min-width: 60px;
     }
     .weekly-table tbody td.today,
     .weekly-table tbody th.today {
-      background: #fff3cd;
+      background: #fef3c7;
       font-weight: bold;
     }
     .weekly-table tbody tr:first-child th.today {
-      background: #ffc107;
-      color: #000;
+      background: #f59e0b;
+      color: white;
     }
     @media print {
       .container, .print-table-wrapper, .print-table-wrapper table {
@@ -214,7 +215,7 @@
       .print-table-wrapper { width: 100vw; max-width: 100vw; page-break-after: always; }
       table { width: 100% !important; font-size: 14pt; border-collapse: collapse !important; }
       th, td { border: 1px solid #333 !important; padding: 8px !important; }
-      th { background: #2563eb !important; color: #fff !important; }
+      th { background: #1e40af !important; color: #fff !important; }
       input, button, label, nav, aside, .sidebar, header, footer, .non-print, [class*="sidebar"], [class*="side-bar"], h2 {
         display: none !important;
       }

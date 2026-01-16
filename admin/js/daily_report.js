@@ -734,25 +734,65 @@ async function updateWeeklySummary(selectedDate) {
     });
   }
   
-  // 테이블 렌더링
+  // 테이블 렌더링 (가로 방향)
   const tbody = document.getElementById('weekly-summary-body');
   if (!tbody) return;
   
   const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-  tbody.innerHTML = weeklyData.map((item, index) => {
-    const isToday = item.date === selectedDate;
-    const dateObj = new Date(item.date);
-    const formatted = `${item.date.split('-')[1]}/${item.date.split('-')[2]} (${weekdays[index]})`;
-    
-    return `
-      <tr class="${isToday ? 'today' : ''}">
-        <td>${formatted}</td>
-        <td>${item.in}대</td>
-        <td>${item.out}대</td>
-        <td>${item.stock}대</td>
-      </tr>
-    `;
+  
+  // 요일 행
+  const weekdayRow = weekdays.map((day, index) => {
+    const isToday = weeklyData[index].date === selectedDate;
+    return `<th class="${isToday ? 'today' : ''}">${day}</th>`;
   }).join('');
+  
+  // 날짜 행
+  const dateRow = weeklyData.map(item => {
+    const isToday = item.date === selectedDate;
+    const formatted = `${item.date.split('-')[1]}/${item.date.split('-')[2]}`;
+    return `<td class="${isToday ? 'today' : ''}">${formatted}</td>`;
+  }).join('');
+  
+  // 입고 행
+  const inRow = weeklyData.map(item => {
+    const isToday = item.date === selectedDate;
+    return `<td class="${isToday ? 'today' : ''}">${item.in}대</td>`;
+  }).join('');
+  
+  // 출고 행
+  const outRow = weeklyData.map(item => {
+    const isToday = item.date === selectedDate;
+    return `<td class="${isToday ? 'today' : ''}">${item.out}대</td>`;
+  }).join('');
+  
+  // 재고 행
+  const stockRow = weeklyData.map(item => {
+    const isToday = item.date === selectedDate;
+    return `<td class="${isToday ? 'today' : ''}">${item.stock}대</td>`;
+  }).join('');
+  
+  tbody.innerHTML = `
+    <tr>
+      <th>요일</th>
+      ${weekdayRow}
+    </tr>
+    <tr>
+      <th>날짜</th>
+      ${dateRow}
+    </tr>
+    <tr>
+      <th>입고</th>
+      ${inRow}
+    </tr>
+    <tr>
+      <th>출고</th>
+      ${outRow}
+    </tr>
+    <tr>
+      <th>재고</th>
+      ${stockRow}
+    </tr>
+  `;
 }
 
 // 전역 함수로 노출

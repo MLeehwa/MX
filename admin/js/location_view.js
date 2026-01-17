@@ -1062,7 +1062,16 @@ function showLocationModal(loc, info) {
       <div><b>컨테이너 번호:</b> ${info.container_id || '-'}</div>
       <div><b>입고일:</b> ${info.receiving_date || '-'}</div>
       <div><b>제품 정보:</b> ${info.remark || '-'}</div>
+      <div class="mt-4">
+        <button id="moveToEmptyBtn" class="bg-purple-600 text-white px-4 py-2 rounded w-full hover:bg-purple-700">
+          📦 빈 공간으로 이동
+        </button>
+      </div>
     `;
+    
+    // 빈 공간으로 이동 버튼 이벤트
+    document.getElementById('moveToEmptyBtn').onclick = () => showMoveToEmptyModal(loc, info);
+    
     shippingOrderArea.innerHTML = `<div class="mt-4 text-sm text-gray-500">출하지시서 상태 확인 중...</div>`;
     // 출하지시서 존재 여부 확인 - 컨테이너 단위로 확인
     (async () => {
@@ -1378,4 +1387,201 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
 });
 
 // 초기 언어 설정
-setLang(currentLang); 
+setLang(currentLang);
+
+// 빈 공간으로 이동 모달 표시 함수
+async function showMoveToEmptyModal(currentLoc, info) {
+  // 모달 생성
+  const modalHtml = `
+    <div id="moveToEmptyModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: flex;">
+      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold">빈 공간으로 이동</h2>
+          <button onclick="document.getElementById('moveToEmptyModal').remove()" class="text-gray-500 hover:text-gray-700">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="mb-4 p-4 bg-gray-100 rounded">
+          <div class="font-bold text-lg mb-2">현재 위치 정보</div>
+          <div><b>위치:</b> ${currentLoc}</div>
+          <div><b>컨테이너 번호:</b> ${info.container_id || '-'}</div>
+          <div><b>제품 정보:</b> ${info.remark || '-'}</div>
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-bold mb-2">이동할 빈 위치 선택</label>
+          <select id="targetEmptyLocation" class="border rounded px-3 py-2 w-full">
+            <option value="">로딩 중...</option>
+          </select>
+        </div>
+        
+        <div class="flex gap-2">
+          <button id="confirmMoveBtn" class="bg-blue-600 text-white px-6 py-2 rounded flex-1 hover:bg-blue-700">
+            이동 확인
+          </button>
+          <button onclick="document.getElementById('moveToEmptyModal').remove()" class="bg-gray-300 text-gray-700 px-6 py-2 rounded hover:bg-gray-400">
+            취소
+          </button>
+        </div>
+        
+        <div id="moveResultMsg" class="mt-4 text-sm"></div>
+      </div>
+    </div>
+  `;
+  
+  // 모달 추가
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+  
+  // 빈 위치 목록 로드
+  const targetSelect = document.getElementById('targetEmptyLocation');
+  const available = await getAvailableLocationsForView();
+  
+  targetSelect.innerHTML = '<option value="">빈 위치 선택...</option>';
+  if (available.length === 0) {
+    targetSelect.innerHTML = '<option value="">사용 가능한 위치가 없습니다</option>';
+  } else {
+    available.forEach(loc => {
+      const option = document.createElement('option');
+      option.value = loc;
+      option.textContent = loc;
+      targetSelect.appendChild(option);
+    });
+  }
+  
+  // 이동 확인 버튼 이벤트
+  document.getElementById('confirmMoveBtn').onclick = async () => {
+    const targetLocation = targetSelect.value;
+    if (!targetLocation) {
+      document.getElementById('moveResultMsg').innerHTML = '<span class="text-red-600">이동할 위치를 선택해주세요.</span>';
+      return;
+    }
+    
+    await moveContainerToNewLocation(currentLoc, targetLocation, info);
+  };
+}
+
+// 컨테이너를 새 위치로 이동하는 함수
+async function moveContainerToNewLocation(currentLoc, newLoc, info) {
+  const resultMsg = document.getElementById('moveResultMsg');
+  resultMsg.innerHTML = '<span class="text-blue-600">이동 중...</span>';
+  
+  try {
+    // 1. mx_receiving_items에서 해당 컨테이너의 모든 항목 location_code 업데이트
+    const { error: updateError } = await supabase
+      .from('mx_receiving_items')
+      .update({ location_code: newLoc })
+      .eq('container_no', info.container_id);
+    
+    if (updateError) throw updateError;
+    
+    // 2. 이동 완료 후 새 위치 라벨 프린트
+    await printLocationLabel(newLoc, info);
+    
+    resultMsg.innerHTML = '<span class="text-green-600 font-bold">✓ 이동 완료! 새 위치 라벨이 출력됩니다.</span>';
+    
+    // 3. 3초 후 모달 닫고 화면 새로고침
+    setTimeout(() => {
+      document.getElementById('moveToEmptyModal').remove();
+      resetLocationView();
+    }, 3000);
+    
+  } catch (error) {
+    console.error('위치 이동 실패:', error);
+    resultMsg.innerHTML = `<span class="text-red-600">이동 실패: ${error.message}</span>`;
+  }
+}
+
+// 위치 라벨 프린트 함수 (입고 계획 프린트와 유사)
+async function printLocationLabel(locationCode, info) {
+  try {
+    // receiving_plan에서 정보 가져오기
+    const { data: plan } = await supabase
+      .from('mx_receiving_plan')
+      .select('*')
+      .eq('container_no', info.container_id)
+      .single();
+    
+    // receiving_items에서 제품 정보 가져오기
+    const { data: items } = await supabase
+      .from('mx_receiving_items')
+      .select('*')
+      .eq('container_no', info.container_id)
+      .eq('location_code', locationCode);
+    
+    if (!plan || !items || items.length === 0) {
+      alert('프린트할 데이터를 찾을 수 없습니다.');
+      return;
+    }
+    
+    // 프린트 HTML 생성
+    const printHtml = `
+      <div style='display:block; min-height:950px; padding:20px; box-sizing:border-box;'>
+        <div style='display:block; text-align:center;'>
+          <div style='font-size:150px;font-weight:bold;margin-bottom:30px;white-space:nowrap;'>${plan.container_no}</div>
+          <div style='font-size:100px;font-weight:bold;margin-bottom:20px;'>LOCATION: <span style="font-weight:normal;">${locationCode}</span></div>
+          <div style='font-size:50px;font-weight:bold;margin-bottom:20px;'>RECEIVING DATE: <span style="font-weight:normal;">${plan.receive_date}</span></div>
+          <table style="font-size:45px;font-weight:bold;margin-bottom:30px;text-align:center;border-collapse:collapse;width:100%;">
+            <tr>
+              <th style="border:2px solid #000;padding:8px 16px;">제품 정보</th>
+            </tr>
+            ${items.map(item => `
+              <tr>
+                <td style="border:2px solid #000;padding:8px 16px;font-weight:normal;">${item.remark || '-'}</td>
+              </tr>
+            `).join('')}
+          </table>
+          <div style='margin-top:20px;'>
+            <canvas class='qr-print' width='200' height='200' data-qr='${plan.container_no}'></canvas>
+            <div style='font-size:30px;margin-top:8px;font-weight:normal;white-space:nowrap;'>${plan.container_no}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // 새 창에서 프린트
+    const win = window.open('', '_blank', 'width=800,height=900');
+    win.document.write(`
+      <html>
+        <head>
+          <title>Location Label - ${plan.container_no}</title>
+          <style>
+            @media print {
+              @page { size: Letter portrait; margin: 0.5in; }
+              body { margin: 0; padding: 0; }
+            }
+            body { font-family: Arial, sans-serif; }
+          </style>
+          <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+        </head>
+        <body>
+          ${printHtml}
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                const canvas = document.querySelector('.qr-print');
+                if (canvas && typeof QRious !== 'undefined') {
+                  new QRious({
+                    element: canvas,
+                    value: canvas.getAttribute('data-qr'),
+                    size: 200
+                  });
+                  setTimeout(function() {
+                    window.print();
+                  }, 500);
+                }
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+    
+  } catch (error) {
+    console.error('라벨 프린트 실패:', error);
+    alert('라벨 프린트 중 오류가 발생했습니다: ' + error.message);
+  }
+} 

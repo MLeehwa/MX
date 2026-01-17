@@ -21,8 +21,12 @@ export async function initSection() {
   const dateInput = document.getElementById('report-date');
   if (dateInput) {
     if (!dateInput.value) {
+      // 로컬 시간 기준 오늘 날짜
       const today = new Date();
-      dateInput.value = today.toISOString().slice(0, 10);
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${yyyy}-${mm}-${dd}`;
     }
     loadDailyReport(dateInput.value);
     dateInput.addEventListener('change', () => {
@@ -479,10 +483,12 @@ if (document.querySelector('.print-btn')) {
 
 // 요약 대시보드 업데이트 함수
 async function updateSummaryDashboard(date, receiving, shipping) {
-  // 날짜 표시
+  // 날짜 표시 (로컬 시간 기준)
   const summaryDateEl = document.getElementById('summary-date');
   if (summaryDateEl) {
-    const dateObj = new Date(date);
+    // YYYY-MM-DD를 로컬 시간으로 정확히 파싱
+    const [year, month, day] = date.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
     const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
     const formatted = `${date} (${weekdays[dateObj.getDay()]})`;
     summaryDateEl.textContent = formatted;
@@ -671,19 +677,24 @@ window.captureSummary = captureSummary;
 
 // 금주 일별 현황 업데이트 함수
 async function updateWeeklySummary(selectedDate) {
-  // 선택된 날짜가 속한 주의 월요일과 일요일 계산
-  const date = new Date(selectedDate);
+  // 선택된 날짜가 속한 주의 월요일과 일요일 계산 (로컬 시간 기준)
+  const [year, month, day] = selectedDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
   const dayOfWeek = date.getDay(); // 0(일요일) ~ 6(토요일)
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 월요일로 조정
   
-  const monday = new Date(date);
-  monday.setDate(date.getDate() + diff);
+  const monday = new Date(year, month - 1, day);
+  monday.setDate(monday.getDate() + diff);
   
   const weekDates = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    weekDates.push(d.toISOString().slice(0, 10));
+    // 로컬 시간으로 YYYY-MM-DD 형식 생성
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    weekDates.push(`${yyyy}-${mm}-${dd}`);
   }
   
   // 각 날짜별 데이터 조회
@@ -691,10 +702,12 @@ async function updateWeeklySummary(selectedDate) {
   let cumulativeStock = 0;
   
   // 해당 주 시작 전의 재고 계산 (월요일 이전의 전체 재고)
+  // 월요일 00:00:00 로컬 시간을 ISO 문자열로 변환
+  const mondayISO = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate()).toISOString();
   const { data: itemsBeforeWeek } = await supabase
     .from('mx_receiving_items')
     .select('container_no, location_code, created_at')
-    .lt('created_at', monday.toISOString());
+    .lt('created_at', mondayISO);
   
   // 주 시작 전 재고 계산
   if (itemsBeforeWeek) {

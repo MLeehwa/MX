@@ -603,8 +603,12 @@ async function loadPlans(applyFilter = false) {
   if (!applyFilter) {
     // 필터 없이도 오늘 날짜 + 과거 미확정 데이터 보여주기
     try {
-      // 오늘 날짜 구하기 (YYYY-MM-DD 형식)
-      const today = new Date().toISOString().split('T')[0];
+      // 오늘 날짜 구하기 (로컬 시간 기준, YYYY-MM-DD 형식)
+      const todayDate = new Date();
+      const yyyy = todayDate.getFullYear();
+      const mm = String(todayDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(todayDate.getDate()).padStart(2, '0');
+      const today = `${yyyy}-${mm}-${dd}`;
       
       // 1. 오늘 날짜인 계획 조회
       const { data: todayPlans, error: todayError } = await window.supabase
@@ -618,10 +622,13 @@ async function loadPlans(applyFilter = false) {
 
       if (todayError) throw todayError;
 
-      // 2. 과거 날짜 계획 조회 (최근 30일)
+      // 2. 과거 날짜 계획 조회 (최근 30일) (로컬 시간 기준)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+      const yyyy30 = thirtyDaysAgo.getFullYear();
+      const mm30 = String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0');
+      const dd30 = String(thirtyDaysAgo.getDate()).padStart(2, '0');
+      const thirtyDaysAgoStr = `${yyyy30}-${mm30}-${dd30}`;
       
       const { data: pastPlans, error: pastError } = await window.supabase
         .from('mx_receiving_plan')
@@ -818,7 +825,12 @@ function bindEventListeners() {
         const labelIds = forceBtn.dataset.labelIds;
         if (labelIds) {
           pendingForceReceive = labelIds.split(',');
-          forceReceiveDate.value = new Date().toISOString().split('T')[0];
+          // 로컬 시간 기준으로 오늘 날짜 설정
+          const todayDate = new Date();
+          const yyyy = todayDate.getFullYear();
+          const mm = String(todayDate.getMonth() + 1).padStart(2, '0');
+          const dd = String(todayDate.getDate()).padStart(2, '0');
+          forceReceiveDate.value = `${yyyy}-${mm}-${dd}`;
           forceReceiveModal.classList.remove('hidden');
         }
         return false;
@@ -1258,8 +1270,12 @@ export async function initSection() {
     });
   }
 
-  // 7. 날짜 필터 초기화
-  const today = new Date().toISOString().split("T")[0];
+  // 7. 날짜 필터 초기화 (로컬 시간 기준)
+  const todayDate = new Date();
+  const yyyy = todayDate.getFullYear();
+  const mm = String(todayDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(todayDate.getDate()).padStart(2, '0');
+  const today = `${yyyy}-${mm}-${dd}`;
   const startDateEl = document.getElementById("filterStartDate");
   const endDateEl = document.getElementById("filterEndDate");
   if (startDateEl && endDateEl) {
@@ -3018,13 +3034,20 @@ async function createTestData() {
   try {
     console.log('테스트 데이터 생성 시작...');
     
+    // 로컬 시간 기준 오늘 날짜
+    const todayDate = new Date();
+    const yyyy = todayDate.getFullYear();
+    const mm = String(todayDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(todayDate.getDate()).padStart(2, '0');
+    const today = `${yyyy}-${mm}-${dd}`;
+    
     // 1. 테스트 receiving_plan 생성
     const { data: planData, error: planError } = await window.supabase
       .from('mx_receiving_plan')
       .insert({
         type: 'container',
         container_no: 'TEST-001',
-        receive_date: new Date().toISOString().slice(0, 10),
+        receive_date: today,
       })
       .select('id')
       .single();

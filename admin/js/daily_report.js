@@ -38,45 +38,26 @@ export async function initSection() {
   const captureBtn = document.getElementById('capture-btn');
   if (captureBtn) {
     captureBtn.onclick = captureSummary;
-    console.log('캡쳐 버튼 이벤트 등록 완료');
   }
 
   // 저장 버튼 이벤트
   const saveRemarksBtn = document.getElementById('save-remarks-btn');
   if (saveRemarksBtn) {
     saveRemarksBtn.onclick = function() {
-      console.log('💾 저장 버튼 클릭됨!');
       window.saveRemarks();
     };
-    console.log('✅ 저장 버튼 이벤트 등록 완료');
-  } else {
-    console.error('❌ 저장 버튼을 찾을 수 없습니다');
   }
 
-  // 특이사항 자동 로드 (localStorage에서)
+  // 특이사항 자동 로드
   const remarksInput = document.getElementById('remarks-input');
   if (remarksInput && dateInput) {
     window.loadRemarks(dateInput.value);
-    console.log('✅ 특이사항 자동 로드 완료');
     
     // 날짜 변경 시에도 로드
-    const originalChangeHandler = dateInput.onchange;
     dateInput.addEventListener('change', (e) => {
-      console.log('📅 날짜 변경됨:', e.target.value);
       window.loadRemarks(e.target.value);
     });
-  } else {
-    console.error('❌ 특이사항 입력란 또는 날짜 입력란을 찾을 수 없습니다');
   }
-  
-  // html2canvas 로드 확인
-  setTimeout(() => {
-    if (typeof html2canvas !== 'undefined') {
-      console.log('✅ html2canvas 로드 성공');
-    } else {
-      console.error('❌ html2canvas 로드 실패');
-    }
-  }, 1000);
 }
 
 async function loadDailyReport(date) {
@@ -132,9 +113,6 @@ async function loadDailyReport(date) {
     .from('mx_shipping_instruction')
     .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
     .eq('shipping_date', date);
-
-  console.log('Receiving Query:', date, receiving);
-  console.log('Shipping Query:', date, shipping);
 
   // part_quantities가 있는 경우 여러 파트를 개별 행으로 분리
   const expandedShipping = [];
@@ -524,11 +502,8 @@ async function updateSummaryDashboard(date, receiving, shipping) {
 
 // 특이사항 저장 함수 (Supabase DB 사용)
 async function saveRemarks() {
-  console.log('💾 saveRemarks 함수 호출됨');
   const date = document.getElementById('report-date').value;
   const remarks = document.getElementById('remarks-input').value;
-  
-  console.log('저장 데이터:', { date, remarks });
   
   if (!date) {
     alert('날짜를 선택해주세요.');
@@ -550,13 +525,11 @@ async function saveRemarks() {
         .from('mx_daily_report_remarks')
         .update({ remarks: remarks })
         .eq('report_date', date);
-      console.log('✅ DB 업데이트 완료');
     } else {
       // 삽입
       result = await supabase
         .from('mx_daily_report_remarks')
         .insert({ report_date: date, remarks: remarks });
-      console.log('✅ DB 삽입 완료');
     }
     
     if (result.error) throw result.error;
@@ -573,9 +546,7 @@ window.saveRemarks = saveRemarks;
 
 // 특이사항 로드 함수 (Supabase DB에서)
 async function loadRemarks(date) {
-  console.log('📖 loadRemarks 함수 호출됨:', date);
   if (!date) {
-    console.log('⚠️ 날짜가 없어서 로드 중단');
     return;
   }
   
@@ -591,14 +562,10 @@ async function loadRemarks(date) {
     }
     
     const remarks = data?.remarks || '';
-    console.log('📦 DB에서 로드:', { date, remarks });
     
     const remarksInput = document.getElementById('remarks-input');
     if (remarksInput) {
       remarksInput.value = remarks;
-      console.log('✅ 특이사항 입력란에 설정 완료');
-    } else {
-      console.error('❌ 특이사항 입력란(#remarks-input)을 찾을 수 없음');
     }
   } catch (error) {
     console.error('❌ 로드 실패:', error);
@@ -613,8 +580,6 @@ window.loadRemarks = loadRemarks;
 
 // 요약 대시보드 캡쳐 함수
 function captureSummary() {
-  console.log('📸 캡쳐 함수 호출됨');
-  
   const dashboard = document.getElementById('summary-dashboard');
   const buttons = document.getElementById('action-buttons');
   
@@ -626,11 +591,8 @@ function captureSummary() {
   // html2canvas 로드 확인
   if (typeof html2canvas === 'undefined') {
     alert('캡쳐 라이브러리가 로드되지 않았습니다.\n페이지를 새로고침 해주세요.');
-    console.error('html2canvas is not loaded');
     return;
   }
-
-  console.log('캡쳐 시작...');
   
   // 캡쳐 전에 버튼 숨기기
   if (buttons) buttons.style.display = 'none';
@@ -642,8 +604,6 @@ function captureSummary() {
     logging: false,
     useCORS: true
   }).then(canvas => {
-    console.log('캡쳐 완료, 다운로드 시작...');
-    
     // 캡쳐 후 버튼 다시 보이기
     if (buttons) buttons.style.display = 'flex';
 
@@ -662,7 +622,6 @@ function captureSummary() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      console.log('✅ 다운로드 완료!');
     }, 'image/png');
   }).catch(error => {
     // 오류 시에도 버튼 다시 보이기

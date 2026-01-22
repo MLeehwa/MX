@@ -34,26 +34,20 @@
     async function loadSection(name) {
       if (!checkAuth()) return;
       
-      console.log('Loading section:', name);
-      
       // Cleanup previous section
       const mainContent = document.getElementById("mainContent");
       if (mainContent) {
-        console.log('Cleaning up previous section...');
         // Remove all event listeners and cleanup
-        const oldContent = mainContent.innerHTML;
         mainContent.innerHTML = '';
         
         // Remove old scripts
         const oldScripts = document.querySelectorAll('script[data-section]');
         oldScripts.forEach(script => {
-          console.log('Removing old script:', script.src);
           script.remove();
         });
       }
 
       // Load new section HTML
-      console.log('Loading section HTML...');
       const res = await fetch(`./sections/${name}.html`);
       const html = await res.text();
       mainContent.innerHTML = html;
@@ -65,19 +59,13 @@
       if (name === 'receiving') jsName = 'receiving_admin';
       
       // Load section-specific JavaScript (동적 import)
-      console.log('Loading section JS:', jsName);
       try {
         const module = await import(`./js/${jsName}.js`);
-        console.log('Module loaded:', module);
         if (typeof module.initSection === 'function') {
-          console.log('Calling initSection...');
           await module.initSection();
-          console.log('initSection completed');
-        } else {
-          console.error('initSection function not found in module');
         }
       } catch (e) {
-        console.error('섹션 JS 로드/초기화 오류:', e);
+        alert('섹션 로드 오류: ' + e.message);
       }
     }
 
@@ -89,11 +77,7 @@
     // Initial load
     window.addEventListener('load', () => {
       if (!checkAuth()) return;
-      console.log('Window loaded');
-      console.log('Current URL:', window.location.href);
-      console.log('Current hash:', window.location.hash);
       const section = window.location.hash.slice(1) || 'receiving_plan';
-      console.log('Loading section:', section);
       loadSection(section);
     });
   </script>

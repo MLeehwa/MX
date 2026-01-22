@@ -11,13 +11,11 @@ function getUTCDateRange(localDate) {
   };
 }
 
-let lastReceiving = [];
-let lastShipping = [];
+// 테이블 렌더링 제거로 인해 더 이상 사용되지 않음
+// let lastReceiving = [];
+// let lastShipping = [];
 
 export async function initSection() {
-  const btn = document.getElementById('excel-download-btn');
-  if (btn) btn.onclick = exportDailyReport;
-
   const dateInput = document.getElementById('report-date');
   if (dateInput) {
     if (!dateInput.value) {
@@ -108,28 +106,11 @@ async function loadDailyReport(date) {
     }
   });
 
-  // 출고: shipped_at 기준으로 실제 출고 완료된 항목만 조회
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59`;
-  
-  const { data: shippedItems } = await supabase
-    .from('mx_shipping_instruction_items')
-    .select('container_no')
-    .not('shipped_at', 'is', null)
-    .gte('shipped_at', startOfDay)
-    .lte('shipped_at', endOfDay);
-  
-  const shippedContainerNos = (shippedItems || []).map(item => item.container_no);
-  
-  // 해당 container_no들의 상세 정보 조회
-  let shipping = [];
-  if (shippedContainerNos.length > 0) {
-    const { data: shippingData } = await supabase
-      .from('mx_shipping_instruction')
-      .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
-      .in('container_no', shippedContainerNos);
-    shipping = shippingData || [];
-  }
+  // 출고: shipping_date 기준, status 조건 없이 모두
+  const { data: shipping } = await supabase
+    .from('mx_shipping_instruction')
+    .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
+    .eq('shipping_date', date);
 
   // part_quantities가 있는 경우 여러 파트를 개별 행으로 분리
   const expandedShipping = [];
@@ -145,7 +126,6 @@ async function loadDailyReport(date) {
           });
         });
       } catch (e) {
-        // 파싱 실패 시 원본 데이터 사용
         expandedShipping.push(ship);
       }
     } else {
@@ -153,41 +133,14 @@ async function loadDailyReport(date) {
     }
   });
 
-  lastReceiving = receiving || [];
-  lastShipping = expandedShipping || [];
-  
   // 요약 통계 계산 및 업데이트
   await updateSummaryDashboard(date, receiving, expandedShipping);
   
   // 금주 일별 현황 업데이트
   await updateWeeklySummary(date);
-  
-  await renderDailyReportTable(date);
 }
 
-async function renderDailyReportTable(date) {
-  // 출고 데이터를 다시 조회 (lastShipping이 비어있을 수 있으므로)
-  const startOfDay = `${date}T00:00:00`;
-  const endOfDay = `${date}T23:59:59`;
-  
-  const { data: shippedItemsForTable } = await supabase
-    .from('mx_shipping_instruction_items')
-    .select('container_no')
-    .not('shipped_at', 'is', null)
-    .gte('shipped_at', startOfDay)
-    .lte('shipped_at', endOfDay);
-  
-  const shippedContainersForTable = (shippedItemsForTable || []).map(item => item.container_no);
-  
-  let shippingForTable = [];
-  if (shippedContainersForTable.length > 0) {
-    const { data: shippingData } = await supabase
-      .from('mx_shipping_instruction')
-      .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
-      .in('container_no', shippedContainersForTable);
-    shippingForTable = shippingData || [];
-  }
-  
+function renderDailyReportTable(date) {
   // 표만 print-table-wrapper에 렌더링
   const printWrapper = document.getElementById('print-table-wrapper');
   let html = `
@@ -251,7 +204,7 @@ async function renderDailyReportTable(date) {
               </tr>
             </thead>
             <tbody>
-              ${(shippingForTable && shippingForTable.length > 0) ? shippingForTable.map((row, idx) => `
+              ${(lastShipping && lastShipping.length > 0) ? lastShipping.map((row, idx) => `
                 <tr class="hover:bg-gray-50">
                 <td class="border px-2">${idx + 1}</td>
                   <td class="border px-2">KP</td>
@@ -471,32 +424,8 @@ function cloneWithInlineStyles(node) {
   return clone;
 }
 
-if (document.querySelector('.print-btn')) {
-  document.querySelector('.print-btn').onclick = function() {
-    const tableWrapper = document.getElementById('print-table-wrapper');
-    const clone = cloneWithInlineStyles(tableWrapper);
-    // 헤더(th)에 인라인 스타일 강제 적용 (연한 파랑 배경, 검정 글씨, 진한 테두리)
-    clone.querySelectorAll('th').forEach(th => {
-      th.style.background = '#e0e7ef';
-      th.style.color = '#222';
-      th.style.border = '2px solid #222';
-    });
-    // 모든 셀(td, th)에 진한 테두리, 검정 글씨
-    clone.querySelectorAll('td, th').forEach(cell => {
-      cell.style.color = '#222';
-      cell.style.border = '2px solid #222';
-    });
-    // 팝업에 인쇄용 스타일 추가
-    const printStyle = `<style>
-      @page { size: Letter landscape; }
-      th, td { color: #222 !important; border: 2px solid #222 !important; }
-      th { background: #e0e7ef !important; }
-    </style>`;
-    const win = window.open('', '_blank', 'width=1200,height=900');
-    win.document.write('<html><head><title>인쇄</title>' + printStyle + '</head><body>' + clone.outerHTML + '<script>window.print();setTimeout(()=>window.close(),100);<\/script></body></html>');
-    win.document.close();
-  };
-}
+// 프린트 버튼 제거됨 (요약 대시보드만 사용)
+// if (document.querySelector('.print-btn')) { ... }
 
 // 요약 대시보드 업데이트 함수
 async function updateSummaryDashboard(date, receiving, shipping) {
@@ -516,7 +445,7 @@ async function updateSummaryDashboard(date, receiving, shipping) {
   const todayInEl = document.getElementById('today-in-count');
   if (todayInEl) todayInEl.textContent = todayInCount;
 
-  // 오늘 출고 수량 (shipped_at 기준으로 직접 조회)
+  // 오늘 출고 수량 (shipped_at 기준 - 출고 확정일)
   const startOfDay = `${date}T00:00:00`;
   const endOfDay = `${date}T23:59:59`;
   
@@ -585,7 +514,6 @@ async function saveRemarks() {
     
     alert('특이사항이 저장되었습니다.');
   } catch (error) {
-    console.error('❌ 저장 실패:', error);
     alert('저장에 실패했습니다:\n' + error.message);
   }
 }
@@ -617,7 +545,6 @@ async function loadRemarks(date) {
       remarksInput.value = remarks;
     }
   } catch (error) {
-    console.error('❌ 로드 실패:', error);
     // 오류가 있어도 빈 값으로 설정
     const remarksInput = document.getElementById('remarks-input');
     if (remarksInput) remarksInput.value = '';
@@ -675,7 +602,6 @@ function captureSummary() {
   }).catch(error => {
     // 오류 시에도 버튼 다시 보이기
     if (buttons) buttons.style.display = 'flex';
-    console.error('❌ 캡쳐 실패:', error);
     alert('캡쳐에 실패했습니다:\n' + error.message);
   });
 }
@@ -736,18 +662,13 @@ async function updateWeeklySummary(selectedDate) {
     
     const inCount = new Set((plans || []).map(p => p.container_no)).size;
     
-    // 출고 조회 (shipped_at 기준 - 실제 출고 완료된 항목만)
-    const dayStart = `${dateStr}T00:00:00`;
-    const dayEnd = `${dateStr}T23:59:59`;
-    
-    const { data: dayShippedItems } = await supabase
-      .from('mx_shipping_instruction_items')
+    // 출고 조회 (shipping_date 기준)
+    const { data: shipping } = await supabase
+      .from('mx_shipping_instruction')
       .select('container_no')
-      .not('shipped_at', 'is', null)
-      .gte('shipped_at', dayStart)
-      .lte('shipped_at', dayEnd);
+      .eq('shipping_date', dateStr);
     
-    const outCount = new Set((dayShippedItems || []).map(item => item.container_no)).size;
+    const outCount = new Set((shipping || []).map(s => s.container_no)).size;
     
     // 재고는 누적 계산
     cumulativeStock = cumulativeStock + inCount - outCount;

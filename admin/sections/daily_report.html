@@ -244,11 +244,11 @@
 </head>
 <body>
   <div class="container">
-    <h2>일일 입출고 현황 리포트</h2>
-    <label for="report-date">날짜 선택:</label>
-    <input type="date" id="report-date" />
-    <button id="excel-download-btn">엑셀 다운로드</button>
-    <button class="print-btn">프린트</button>
+    <h2 style="text-align: center; margin-bottom: 20px;">일일 입출고 리포트</h2>
+    <div style="text-align: center; margin-bottom: 20px;">
+      <label for="report-date">날짜 선택:</label>
+      <input type="date" id="report-date" />
+    </div>
     
     <!-- 요약 대시보드 -->
     <div class="summary-dashboard" id="summary-dashboard">
@@ -293,10 +293,6 @@
         <button class="action-btn save" id="save-remarks-btn" onclick="window.saveRemarks()">💾 저장하기</button>
       </div>
     </div>
-    
-    <hr style="margin: 40px 0; border: 2px solid #dee2e6;">
-    
-    <div class="print-table-wrapper" id="print-table-wrapper"></div>
   </div>
 </body>
 </html> 

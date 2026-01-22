@@ -145,7 +145,7 @@ async function loadDailyReport(date) {
           });
         });
       } catch (e) {
-        console.error('Error parsing part_quantities:', e);
+        // 파싱 실패 시 원본 데이터 사용
         expandedShipping.push(ship);
       }
     } else {
@@ -162,10 +162,32 @@ async function loadDailyReport(date) {
   // 금주 일별 현황 업데이트
   await updateWeeklySummary(date);
   
-  renderDailyReportTable(date);
+  await renderDailyReportTable(date);
 }
 
-function renderDailyReportTable(date) {
+async function renderDailyReportTable(date) {
+  // 출고 데이터를 다시 조회 (lastShipping이 비어있을 수 있으므로)
+  const startOfDay = `${date}T00:00:00`;
+  const endOfDay = `${date}T23:59:59`;
+  
+  const { data: shippedItemsForTable } = await supabase
+    .from('mx_shipping_instruction_items')
+    .select('container_no')
+    .not('shipped_at', 'is', null)
+    .gte('shipped_at', startOfDay)
+    .lte('shipped_at', endOfDay);
+  
+  const shippedContainersForTable = (shippedItemsForTable || []).map(item => item.container_no);
+  
+  let shippingForTable = [];
+  if (shippedContainersForTable.length > 0) {
+    const { data: shippingData } = await supabase
+      .from('mx_shipping_instruction')
+      .select('container_no, location_code, part_no, qty, shipping_date, part_quantities')
+      .in('container_no', shippedContainersForTable);
+    shippingForTable = shippingData || [];
+  }
+  
   // 표만 print-table-wrapper에 렌더링
   const printWrapper = document.getElementById('print-table-wrapper');
   let html = `
@@ -229,7 +251,7 @@ function renderDailyReportTable(date) {
               </tr>
             </thead>
             <tbody>
-              ${(lastShipping && lastShipping.length > 0) ? lastShipping.map((row, idx) => `
+              ${(shippingForTable && shippingForTable.length > 0) ? shippingForTable.map((row, idx) => `
                 <tr class="hover:bg-gray-50">
                 <td class="border px-2">${idx + 1}</td>
                   <td class="border px-2">KP</td>
